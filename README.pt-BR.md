@@ -40,7 +40,7 @@
   - Botões para definir categoria, marcar como pago/concluído ou excluir
   - **Resumo diário** opcional toda manhã com o que vence no dia + atrasadas
 - **💾 Backup e restauração** — backups automáticos diários (mantém os 10 mais recentes) e exportação/importação manual.
-- **🌙 Modo escuro**, **autostart** (abre em segundo plano com o sistema) e **lembretes por e-mail (SMTP)**.
+- **🌙 Modo escuro**, **autostart** (abre em segundo plano com o sistema), modo opcional para manter o macOS acordado e **lembretes por e-mail (SMTP)**.
 - **🔒 Local e privado** — todos os dados ficam num banco SQLite local na sua máquina. Sem nuvem, sem conta.
 
 ## 📸 Telas
@@ -92,7 +92,7 @@ O instalador é gerado em `src-tauri/target/release/bundle/` (ex: `.dmg` no macO
 3. Envie qualquer mensagem para o seu bot para parear (só o primeiro chat que falar com o bot fica autorizado).
 4. Comece a lançar e a perguntar. Envie `/menu` para o bot ver toda a sintaxe.
 
-> O bot consulta o Telegram enquanto o app está rodando (o computador precisa estar ligado/acordado). Para entrega 24/7 seria necessário um webhook na nuvem — fora do escopo deste app local.
+> O bot consulta o Telegram enquanto o app está rodando. No macOS, ative **Configurações → Inicialização → Manter o Mac acordado** para impedir repouso automático enquanto o Organiza estiver aberto; a tela ainda pode apagar, e um notebook com a tampa fechada/offline ainda não recebe mensagens. Para entrega 24/7 sem uma máquina local acordada, seria necessário um webhook na nuvem — fora do escopo deste app local.
 
 ## 📁 Estrutura do projeto
 

@@ -16,6 +16,7 @@ import { backupAutomaticoSeNecessario } from "./lib/backup";
 import { contasPendentesAte, obterConfig, salvarConfig } from "./lib/db";
 import { EVENTO_ATUALIZAR } from "./lib/eventos";
 import { hojeISO } from "./lib/format";
+import { aplicarManterAcordadoSalvo } from "./lib/power";
 import { iniciarLembretes } from "./lib/reminders";
 import { iniciarTelegram } from "./lib/telegram";
 
@@ -46,6 +47,7 @@ export default function App() {
 
   useEffect(() => {
     backupAutomaticoSeNecessario().catch(console.error);
+    aplicarManterAcordadoSalvo().catch(console.error);
     iniciarLembretes();
     iniciarTelegram();
     obterConfig("tema")

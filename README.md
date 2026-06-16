@@ -40,7 +40,7 @@
   - Inline buttons to set category, mark paid/done, or delete
   - Optional **daily morning digest** of what's due today + overdue
 - **💾 Backup & restore** — automatic daily backups (keeps the last 10) plus manual export/import.
-- **🌙 Dark mode**, **autostart** (launch hidden with the system), and **email (SMTP) reminders**.
+- **🌙 Dark mode**, **autostart** (launch hidden with the system), optional macOS keep-awake mode, and **email (SMTP) reminders**.
 - **🔒 Local-first & private** — all data lives in a local SQLite database on your machine. No cloud, no account.
 
 ## 📸 Screenshots
@@ -92,7 +92,7 @@ The installer is generated under `src-tauri/target/release/bundle/` (e.g. `.dmg`
 3. Send any message to your bot to pair it (only the first chat that messages the bot is authorized).
 4. Start adding entries and asking questions. Send `/menu` to the bot for the full syntax.
 
-> The bot polls Telegram while the app is running (the Mac/PC must be awake). For 24/7 delivery you'd need a cloud webhook — out of scope for this local-first app.
+> The bot polls Telegram while the app is running. On macOS, enable **Configurações → Inicialização → Manter o Mac acordado** to prevent idle sleep while Organiza is open; the display may still turn off, and a closed laptop lid/offline Mac still cannot receive messages. For true 24/7 delivery without an awake local machine, you'd need a cloud webhook — out of scope for this local-first app.
 
 ## 📁 Project structure
 

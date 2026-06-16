@@ -13,6 +13,11 @@ import {
 } from "lucide-react";
 import { statusTelegram, testarToken } from "../lib/telegram";
 import { exportarBackup, restaurarBackup } from "../lib/backup";
+import {
+  CONFIG_MANTER_ACORDADO,
+  definirManterAcordado,
+  manterAcordadoAtivo,
+} from "../lib/power";
 
 /** Indicador ao vivo do loop de escuta do Telegram. */
 function StatusTelegram() {
@@ -96,6 +101,8 @@ export default function Configuracoes() {
   const [erro, setErro] = useState("");
   const [testando, setTestando] = useState(false);
   const [autostart, setAutostart] = useState(false);
+  const [manterAcordado, setManterAcordado] = useState(false);
+  const [alterandoEnergia, setAlterandoEnergia] = useState(false);
   const [orcamentos, setOrcamentos] = useState<Record<number, string>>({});
   const [tgToken, setTgToken] = useState("");
   const [tgChat, setTgChat] = useState<string | null>(null);
@@ -103,7 +110,17 @@ export default function Configuracoes() {
   const [tgResumoHora, setTgResumoHora] = useState("");
 
   const carregar = useCallback(async () => {
-    const [smtpJson, dias, cats, autoLigado, token, chat, resumoHora] =
+    const [
+      smtpJson,
+      dias,
+      cats,
+      autoLigado,
+      token,
+      chat,
+      resumoHora,
+      manterSalvo,
+      manterAtivo,
+    ] =
       await Promise.all([
         obterConfig("smtp"),
         obterConfig("dias_aviso"),
@@ -112,11 +129,14 @@ export default function Configuracoes() {
         obterConfig("telegram_token"),
         obterConfig("telegram_chat_id"),
         obterConfig("telegram_resumo_hora"),
+        obterConfig(CONFIG_MANTER_ACORDADO),
+        manterAcordadoAtivo().catch(() => false),
       ]);
     setTgToken(token ?? "");
     setTgChat(chat);
     setTgResumoHora(resumoHora ?? "");
     setAutostart(autoLigado);
+    setManterAcordado(manterSalvo === "1" || manterAtivo);
     setOrcamentos(
       Object.fromEntries(
         cats.map((c) => [
@@ -291,6 +311,25 @@ export default function Configuracoes() {
     }
   }
 
+  async function alternarManterAcordado() {
+    const novo = !manterAcordado;
+    setAlterandoEnergia(true);
+    setErro("");
+    try {
+      const aplicado = await definirManterAcordado(novo);
+      setManterAcordado(aplicado);
+      avisar(
+        aplicado
+          ? "O macOS não vai colocar o Mac em repouso automático enquanto o Organiza estiver aberto."
+          : "Repouso automático liberado.",
+      );
+    } catch (err) {
+      setErro(`Não foi possível alterar o modo acordado: ${err}`);
+    } finally {
+      setAlterandoEnergia(false);
+    }
+  }
+
   async function salvarOrcamento(c: Categoria) {
     const centavos = parseMoeda(orcamentos[c.id] ?? "");
     if (centavos === c.orcamento_centavos) return;
@@ -362,9 +401,19 @@ export default function Configuracoes() {
           Abrir o Organiza junto com o sistema (em segundo plano, para os
           lembretes funcionarem sempre)
         </label>
+        <label className="caixa">
+          <input
+            type="checkbox"
+            checked={manterAcordado}
+            disabled={alterandoEnergia}
+            onChange={alternarManterAcordado}
+          />
+          Manter o Mac acordado para Telegram e lembretes enquanto o Organiza
+          estiver aberto
+        </label>
         <p style={{ color: "var(--text-soft)", margin: "8px 0 0" }}>
-          Fechar a janela apenas esconde o app — os lembretes continuam ativos.
-          Para encerrar de verdade, use Cmd+Q.
+          Fechar a janela apenas esconde o app — os lembretes e o Telegram
+          continuam ativos. Para encerrar de verdade, use Cmd+Q.
         </p>
       </div>
 

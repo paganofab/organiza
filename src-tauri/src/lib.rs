@@ -1,8 +1,127 @@
 use lettre::message::header::ContentType;
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{Message, SmtpTransport, Transport};
+#[cfg(target_os = "macos")]
+use std::ffi::CString;
 use tauri::Manager;
 use tauri_plugin_sql::{Migration, MigrationKind};
+
+static POWER_ASSERTION: std::sync::Mutex<Option<u32>> = std::sync::Mutex::new(None);
+
+#[cfg(target_os = "macos")]
+type CFStringRef = *const std::ffi::c_void;
+
+#[cfg(target_os = "macos")]
+#[link(name = "CoreFoundation", kind = "framework")]
+extern "C" {
+    fn CFStringCreateWithCString(
+        alloc: *const std::ffi::c_void,
+        c_str: *const std::ffi::c_char,
+        encoding: u32,
+    ) -> CFStringRef;
+    fn CFRelease(cf: *const std::ffi::c_void);
+}
+
+#[cfg(target_os = "macos")]
+#[link(name = "IOKit", kind = "framework")]
+extern "C" {
+    fn IOPMAssertionCreateWithName(
+        assertion_type: CFStringRef,
+        assertion_level: u32,
+        assertion_name: CFStringRef,
+        assertion_id: *mut u32,
+    ) -> i32;
+    fn IOPMAssertionRelease(assertion_id: u32) -> i32;
+}
+
+#[cfg(target_os = "macos")]
+fn cf_string(valor: &str) -> Result<CFStringRef, String> {
+    const K_CFSTRING_ENCODING_UTF8: u32 = 0x0800_0100;
+    let c_string = CString::new(valor).map_err(|e| e.to_string())?;
+    let cf = unsafe {
+        CFStringCreateWithCString(
+            std::ptr::null(),
+            c_string.as_ptr(),
+            K_CFSTRING_ENCODING_UTF8,
+        )
+    };
+    if cf.is_null() {
+        Err("Não foi possível criar CFString.".into())
+    } else {
+        Ok(cf)
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn criar_assertion_power() -> Result<u32, String> {
+    const K_IOPM_ASSERTION_LEVEL_ON: u32 = 255;
+    let tipo = cf_string("PreventUserIdleSystemSleep")?;
+    let motivo = cf_string("Organiza mantendo Telegram e lembretes ativos")?;
+    let mut id = 0;
+    let resultado =
+        unsafe { IOPMAssertionCreateWithName(tipo, K_IOPM_ASSERTION_LEVEL_ON, motivo, &mut id) };
+    unsafe {
+        CFRelease(tipo);
+        CFRelease(motivo);
+    }
+    if resultado == 0 {
+        Ok(id)
+    } else {
+        Err(format!(
+            "Falha ao impedir repouso automático ({resultado})."
+        ))
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn liberar_assertion_power(id: u32) -> Result<(), String> {
+    let resultado = unsafe { IOPMAssertionRelease(id) };
+    if resultado == 0 {
+        Ok(())
+    } else {
+        Err(format!(
+            "Falha ao liberar repouso automático ({resultado})."
+        ))
+    }
+}
+
+/// Liga/desliga uma assertion do macOS que impede o repouso automático do sistema.
+/// A tela ainda pode apagar; a intenção é manter Telegram/lembretes vivos.
+#[tauri::command]
+fn set_keep_awake(enabled: bool) -> Result<bool, String> {
+    let mut atual = POWER_ASSERTION.lock().map_err(|e| e.to_string())?;
+
+    if enabled {
+        if atual.is_some() {
+            return Ok(true);
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            *atual = Some(criar_assertion_power()?);
+            return Ok(true);
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            return Err("Manter o computador acordado só está disponível no macOS.".into());
+        }
+    }
+
+    if let Some(id) = atual.take() {
+        #[cfg(target_os = "macos")]
+        liberar_assertion_power(id)?;
+    }
+    Ok(false)
+}
+
+#[tauri::command]
+fn keep_awake_status() -> Result<bool, String> {
+    POWER_ASSERTION
+        .lock()
+        .map(|a| a.is_some())
+        .map_err(|e| e.to_string())
+}
 
 /// Copia um comprovante para a pasta de dados do app e retorna o caminho salvo.
 #[tauri::command]
@@ -156,15 +275,19 @@ pub struct SmtpConfig {
 /// `async` + spawn_blocking: o envio SMTP bloqueia, então roda fora da thread
 /// principal para não congelar a interface.
 #[tauri::command]
-async fn send_email(
-    config: SmtpConfig,
-    subject: String,
-    body: String,
-) -> Result<(), String> {
+async fn send_email(config: SmtpConfig, subject: String, body: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
         let email = Message::builder()
-            .from(config.from.parse().map_err(|_| "Email remetente inválido".to_string())?)
-            .to(config.to.parse().map_err(|_| "Email destinatário inválido".to_string())?)
+            .from(
+                config
+                    .from
+                    .parse()
+                    .map_err(|_| "Email remetente inválido".to_string())?,
+            )
+            .to(config
+                .to
+                .parse()
+                .map_err(|_| "Email destinatário inválido".to_string())?)
             .subject(subject)
             .header(ContentType::TEXT_HTML)
             .body(body)
@@ -211,13 +334,11 @@ async fn telegram_api(
             .map_err(|e| e.to_string())?;
         let corpo: serde_json::Value = resposta.json().map_err(|e| e.to_string())?;
         if corpo.get("ok").and_then(|v| v.as_bool()) != Some(true) {
-            return Err(
-                corpo
-                    .get("description")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Erro na API do Telegram")
-                    .to_string(),
-            );
+            return Err(corpo
+                .get("description")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Erro na API do Telegram")
+                .to_string());
         }
         Ok(corpo)
     })
@@ -226,11 +347,12 @@ async fn telegram_api(
 }
 
 fn migrations() -> Vec<Migration> {
-    vec![Migration {
-        version: 1,
-        description: "schema_inicial",
-        kind: MigrationKind::Up,
-        sql: r#"
+    vec![
+        Migration {
+            version: 1,
+            description: "schema_inicial",
+            kind: MigrationKind::Up,
+            sql: r#"
             CREATE TABLE IF NOT EXISTS categorias (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 nome TEXT NOT NULL UNIQUE,
@@ -288,13 +410,13 @@ fn migrations() -> Vec<Migration> {
             CREATE INDEX IF NOT EXISTS idx_contas_status ON contas (status);
             CREATE INDEX IF NOT EXISTS idx_eventos_data ON eventos (data);
         "#,
-    },
-    Migration {
-        version: 2,
-        description: "icones_lucide",
-        kind: MigrationKind::Up,
-        // Troca os emojis das categorias por slugs de ícones Lucide
-        sql: r#"
+        },
+        Migration {
+            version: 2,
+            description: "icones_lucide",
+            kind: MigrationKind::Up,
+            // Troca os emojis das categorias por slugs de ícones Lucide
+            sql: r#"
             UPDATE categorias SET icone = 'home' WHERE icone = '🏠';
             UPDATE categorias SET icone = 'zap' WHERE icone = '💡';
             UPDATE categorias SET icone = 'droplets' WHERE icone = '💧';
@@ -308,21 +430,21 @@ fn migrations() -> Vec<Migration> {
             UPDATE categorias SET icone = 'receipt' WHERE icone = '🧾';
             UPDATE categorias SET icone = 'tag' WHERE icone = '📌';
         "#,
-    },
-    Migration {
-        version: 3,
-        description: "orcamento_e_receitas",
-        kind: MigrationKind::Up,
-        sql: r#"
+        },
+        Migration {
+            version: 3,
+            description: "orcamento_e_receitas",
+            kind: MigrationKind::Up,
+            sql: r#"
             ALTER TABLE categorias ADD COLUMN orcamento_centavos INTEGER NOT NULL DEFAULT 0;
             ALTER TABLE contas ADD COLUMN tipo TEXT NOT NULL DEFAULT 'despesa';
         "#,
-    },
-    Migration {
-        version: 4,
-        description: "categorias_de_receita",
-        kind: MigrationKind::Up,
-        sql: r#"
+        },
+        Migration {
+            version: 4,
+            description: "categorias_de_receita",
+            kind: MigrationKind::Up,
+            sql: r#"
             ALTER TABLE categorias ADD COLUMN tipo TEXT NOT NULL DEFAULT 'despesa';
             INSERT OR IGNORE INTO categorias (nome, cor, icone, tipo) VALUES
                 ('Salário', '#16a34a', 'banknote', 'receita'),
@@ -331,12 +453,12 @@ fn migrations() -> Vec<Migration> {
                 ('Reembolsos', '#0ea5e9', 'receipt', 'receita'),
                 ('Outras receitas', '#a3a3a3', 'tag', 'receita');
         "#,
-    },
-    Migration {
-        version: 5,
-        description: "lembretes",
-        kind: MigrationKind::Up,
-        sql: r#"
+        },
+        Migration {
+            version: 5,
+            description: "lembretes",
+            kind: MigrationKind::Up,
+            sql: r#"
             CREATE TABLE IF NOT EXISTS lembretes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 titulo TEXT NOT NULL,
@@ -352,7 +474,8 @@ fn migrations() -> Vec<Migration> {
             CREATE INDEX IF NOT EXISTS idx_lembretes_data ON lembretes (data);
             CREATE INDEX IF NOT EXISTS idx_lembretes_concluido ON lembretes (concluido);
         "#,
-    }]
+        },
+    ]
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -375,6 +498,8 @@ pub fn run() {
             open_attachment,
             delete_attachment,
             save_text_file,
+            set_keep_awake,
+            keep_awake_status,
             send_email,
             telegram_api,
             backup_db,
