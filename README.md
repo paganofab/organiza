@@ -18,6 +18,10 @@
 
 > The interface is in **Brazilian Portuguese (pt-BR)**. This document describes the project in English; the app itself is localized for Brazilian users (currency in BRL, dates as dd/mm/yyyy).
 
+<div align="center">
+<img src="docs/dashboard.png" width="820" alt="Organiza dashboard" />
+</div>
+
 ---
 
 ## ✨ Features
@@ -38,6 +42,14 @@
 - **💾 Backup & restore** — automatic daily backups (keeps the last 10) plus manual export/import.
 - **🌙 Dark mode**, **autostart** (launch hidden with the system), and **email (SMTP) reminders**.
 - **🔒 Local-first & private** — all data lives in a local SQLite database on your machine. No cloud, no account.
+
+## 📸 Screenshots
+
+| Bills & income | Reports |
+|---|---|
+| ![Bills](docs/contas.png) | ![Reports](docs/relatorios.png) |
+| **Cash-flow forecast** | **Settings (Telegram, backup, budgets)** |
+| ![Cash flow](docs/fluxo-caixa.png) | ![Settings](docs/configuracoes.png) |
 
 ## 🛠️ Tech stack
 

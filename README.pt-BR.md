@@ -18,6 +18,10 @@
 
 > A interface é toda em **português (pt-BR)**, com valores em **R$** e datas no formato **dd/mm/aaaa**.
 
+<div align="center">
+<img src="docs/dashboard.png" width="820" alt="Dashboard do Organiza" />
+</div>
+
 ---
 
 ## ✨ Funcionalidades
@@ -38,6 +42,14 @@
 - **💾 Backup e restauração** — backups automáticos diários (mantém os 10 mais recentes) e exportação/importação manual.
 - **🌙 Modo escuro**, **autostart** (abre em segundo plano com o sistema) e **lembretes por e-mail (SMTP)**.
 - **🔒 Local e privado** — todos os dados ficam num banco SQLite local na sua máquina. Sem nuvem, sem conta.
+
+## 📸 Telas
+
+| Contas e receitas | Relatórios |
+|---|---|
+| ![Contas](docs/contas.png) | ![Relatórios](docs/relatorios.png) |
+| **Fluxo de caixa** | **Configurações (Telegram, backup, orçamentos)** |
+| ![Fluxo de caixa](docs/fluxo-caixa.png) | ![Configurações](docs/configuracoes.png) |
 
 ## 🛠️ Tecnologias
 
