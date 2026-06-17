@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, Plus, RotateCcw, Repeat } from "lucide-react";
 import LembreteForm from "../components/LembreteForm";
+import { MembroBadge } from "../components/MembroBadge";
 import { useAtualizacaoExterna } from "../lib/eventos";
 import {
   concluirLembrete,
   excluirLembrete,
   listarLembretes,
+  listarMembros,
   reabrirLembrete,
 } from "../lib/db";
 import { diffDias, formatarData, hojeISO } from "../lib/format";
-import type { Lembrete } from "../lib/types";
+import type { Lembrete, Membro } from "../lib/types";
 
 const ROTULO_RECORRENCIA: Record<string, string> = {
   diario: "todo dia",
@@ -20,11 +22,18 @@ const ROTULO_RECORRENCIA: Record<string, string> = {
 export default function Lembretes() {
   const hoje = hojeISO();
   const [lembretes, setLembretes] = useState<Lembrete[]>([]);
+  const [membros, setMembros] = useState<Membro[]>([]);
+  const [filtroMembro, setFiltroMembro] = useState("");
   const [formAberto, setFormAberto] = useState(false);
   const [editando, setEditando] = useState<Lembrete | null>(null);
 
   const carregar = useCallback(async () => {
-    setLembretes(await listarLembretes());
+    const [lembs, mems] = await Promise.all([
+      listarLembretes(),
+      listarMembros(true),
+    ]);
+    setLembretes(lembs);
+    setMembros(mems);
   }, []);
 
   useEffect(() => {
@@ -33,16 +42,28 @@ export default function Lembretes() {
 
   useAtualizacaoExterna(carregar);
 
+  const membroPorId = useMemo(
+    () => new Map(membros.map((m) => [m.id, m])),
+    [membros],
+  );
+  const lembretesFiltrados = useMemo(() => {
+    return lembretes.filter((l) => {
+      if (filtroMembro === "familia") return l.membro_id === null;
+      if (filtroMembro) return l.membro_id === Number(filtroMembro);
+      return true;
+    });
+  }, [lembretes, filtroMembro]);
+
   const { atrasados, hojeList, futuros, semData, concluidos } = useMemo(() => {
-    const pend = lembretes.filter((l) => !l.concluido);
+    const pend = lembretesFiltrados.filter((l) => !l.concluido);
     return {
       atrasados: pend.filter((l) => l.data && l.data < hoje),
       hojeList: pend.filter((l) => l.data === hoje),
       futuros: pend.filter((l) => l.data && l.data > hoje),
       semData: pend.filter((l) => !l.data),
-      concluidos: lembretes.filter((l) => l.concluido).slice(0, 20),
+      concluidos: lembretesFiltrados.filter((l) => l.concluido).slice(0, 20),
     };
-  }, [lembretes, hoje]);
+  }, [lembretesFiltrados, hoje]);
 
   async function concluir(l: Lembrete) {
     await concluirLembrete(l.id, hoje);
@@ -64,6 +85,7 @@ export default function Lembretes() {
   }
 
   function linha(l: Lembrete) {
+    const membro = l.membro_id ? membroPorId.get(l.membro_id) : null;
     const dias = l.data ? diffDias(hoje, l.data) : null;
     const quando =
       l.data === null
@@ -106,6 +128,9 @@ export default function Lembretes() {
               ? `${formatarData(l.data)}${l.hora ? ` às ${l.hora}` : ""} · ${quando}`
               : "tarefa sem prazo"}
             {l.observacoes ? ` — ${l.observacoes}` : ""}
+          </div>
+          <div className="detalhe">
+            <MembroBadge membro={membro} mostrarFamilia />
           </div>
         </div>
         {!l.concluido && (
@@ -158,6 +183,19 @@ export default function Lembretes() {
         </button>
       </div>
 
+      <div className="filtros">
+        <select value={filtroMembro} onChange={(e) => setFiltroMembro(e.target.value)}>
+          <option value="">Todos os responsáveis</option>
+          <option value="familia">Família inteira</option>
+          {membros.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.nome}
+              {m.ativo !== 1 ? " (arquivado)" : ""}
+            </option>
+          ))}
+        </select>
+      </div>
+
       {totalPendentes === 0 && !concluidos.length && (
         <div className="card">
           <div className="vazio">
@@ -178,6 +216,7 @@ export default function Lembretes() {
         aoFechar={() => setFormAberto(false)}
         aoSalvar={carregar}
         lembreteEditando={editando}
+        membros={membros}
       />
     </div>
   );

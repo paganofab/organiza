@@ -10,10 +10,19 @@ export interface Categoria {
   tipo: TipoConta;
 }
 
+export interface Membro {
+  id: number;
+  nome: string;
+  cor: string;
+  ativo: number;
+  criado_em: string;
+}
+
 export interface Conta {
   id: number;
   descricao: string;
   categoria_id: number | null;
+  membro_id: number | null;
   valor_centavos: number;
   vencimento: string; // YYYY-MM-DD
   status: StatusConta;
@@ -50,6 +59,7 @@ export interface Lembrete {
   data_conclusao: string | null;
   notificado: number;
   observacoes: string | null;
+  membro_id: number | null;
 }
 
 export interface SmtpConfig {
@@ -64,6 +74,7 @@ export interface SmtpConfig {
 export interface NovaConta {
   descricao: string;
   categoria_id: number | null;
+  membro_id: number | null;
   valor_centavos: number;
   vencimento: string;
   observacoes: string | null;

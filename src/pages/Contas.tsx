@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { ChevronLeft, ChevronRight, Plus, Repeat } from "lucide-react";
 import ContaForm from "../components/ContaForm";
+import { MembroBadge } from "../components/MembroBadge";
 import { IconeCategoria } from "../lib/icons";
 import { useAtualizacaoExterna } from "../lib/eventos";
 import {
@@ -11,6 +12,7 @@ import {
   excluirSerieAPartirDe,
   listarCategorias,
   listarContas,
+  listarMembros,
   marcarPaga,
   marcarPendente,
 } from "../lib/db";
@@ -22,26 +24,31 @@ import {
   somarMeses,
 } from "../lib/format";
 import { estaAtrasada, type Categoria, type Conta } from "../lib/types";
+import type { Membro } from "../lib/types";
 
 export default function Contas() {
   const hoje = hojeISO();
   const [anoMes, setAnoMes] = useState(hoje.slice(0, 7));
   const [contas, setContas] = useState<Conta[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [membros, setMembros] = useState<Membro[]>([]);
   const [filtroStatus, setFiltroStatus] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState("");
+  const [filtroMembro, setFiltroMembro] = useState("");
   const [filtroTipo, setFiltroTipo] = useState("");
   const [busca, setBusca] = useState("");
   const [formAberto, setFormAberto] = useState(false);
   const [editando, setEditando] = useState<Conta | null>(null);
 
   const carregar = useCallback(async () => {
-    const [cs, cats] = await Promise.all([
+    const [cs, cats, mems] = await Promise.all([
       listarContas({ anoMes }),
       listarCategorias(),
+      listarMembros(true),
     ]);
     setContas(cs);
     setCategorias(cats);
+    setMembros(mems);
   }, [anoMes]);
 
   useEffect(() => {
@@ -54,7 +61,10 @@ export default function Contas() {
     () => new Map(categorias.map((c) => [c.id, c])),
     [categorias],
   );
-
+  const membroPorId = useMemo(
+    () => new Map(membros.map((m) => [m.id, m])),
+    [membros],
+  );
   const visiveis = useMemo(() => {
     return contas.filter((c) => {
       if (filtroStatus === "atrasada" && !estaAtrasada(c, hoje)) return false;
@@ -65,12 +75,27 @@ export default function Contas() {
         return false;
       if (filtroCategoria && c.categoria_id !== Number(filtroCategoria))
         return false;
+      if (filtroMembro === "familia" && c.membro_id !== null) return false;
+      if (
+        filtroMembro &&
+        filtroMembro !== "familia" &&
+        c.membro_id !== Number(filtroMembro)
+      )
+        return false;
       if (filtroTipo && c.tipo !== filtroTipo) return false;
       if (busca && !c.descricao.toLowerCase().includes(busca.toLowerCase()))
         return false;
       return true;
     });
-  }, [contas, filtroStatus, filtroCategoria, filtroTipo, busca, hoje]);
+  }, [
+    contas,
+    filtroStatus,
+    filtroCategoria,
+    filtroMembro,
+    filtroTipo,
+    busca,
+    hoje,
+  ]);
 
   const totalVisivel = visiveis.reduce(
     (t, c) => t + (c.tipo === "receita" ? c.valor_centavos : -c.valor_centavos),
@@ -209,8 +234,18 @@ export default function Contas() {
                 <option key={c.id} value={c.id}>
                   {c.nome}
                 </option>
-              ))}
+            ))}
           </optgroup>
+        </select>
+        <select value={filtroMembro} onChange={(e) => setFiltroMembro(e.target.value)}>
+          <option value="">Todos os responsáveis</option>
+          <option value="familia">Família inteira</option>
+          {membros.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.nome}
+              {m.ativo !== 1 ? " (arquivado)" : ""}
+            </option>
+          ))}
         </select>
       </div>
 
@@ -220,6 +255,7 @@ export default function Contas() {
             <tr>
               <th>Descrição</th>
               <th>Categoria</th>
+              <th>Responsável</th>
               <th>Vencimento</th>
               <th>Status</th>
               <th className="num">Valor</th>
@@ -230,13 +266,14 @@ export default function Contas() {
           <tbody>
             {visiveis.length === 0 && (
               <tr>
-                <td colSpan={7}>
+                <td colSpan={8}>
                   <div className="vazio">Nenhuma conta encontrada neste mês.</div>
                 </td>
               </tr>
             )}
             {visiveis.map((c) => {
               const cat = c.categoria_id ? catPorId.get(c.categoria_id) : undefined;
+              const membro = c.membro_id ? membroPorId.get(c.membro_id) : null;
               const receita = c.tipo === "receita";
               const atrasada = !receita && estaAtrasada(c, hoje);
               return (
@@ -263,6 +300,9 @@ export default function Contas() {
                     ) : (
                       "—"
                     )}
+                  </td>
+                  <td>
+                    <MembroBadge membro={membro} mostrarFamilia />
                   </td>
                   <td>{formatarData(c.vencimento)}</td>
                   <td>
@@ -345,6 +385,7 @@ export default function Contas() {
         aoFechar={() => setFormAberto(false)}
         aoSalvar={carregar}
         categorias={categorias}
+        membros={membros}
         contaEditando={editando}
         dataInicial={`${anoMes}-01`}
       />

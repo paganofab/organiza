@@ -4,6 +4,7 @@ import type {
   Conta,
   Evento,
   Lembrete,
+  Membro,
   NovaConta,
   SmtpConfig,
 } from "./types";
@@ -77,12 +78,42 @@ export async function definirOrcamento(id: number, centavos: number) {
   ]);
 }
 
+// ---------- Membros da família ----------
+
+export async function listarMembros(incluirInativos = false): Promise<Membro[]> {
+  const d = await getDb();
+  return d.select<Membro[]>(
+    `SELECT * FROM membros ${incluirInativos ? "" : "WHERE ativo = 1"} ORDER BY ativo DESC, nome`,
+  );
+}
+
+export async function criarMembro(nome: string, cor: string) {
+  const d = await getDb();
+  await d.execute("INSERT INTO membros (nome, cor) VALUES ($1, $2)", [
+    nome,
+    cor,
+  ]);
+}
+
+export async function atualizarMembro(
+  id: number,
+  campos: { nome: string; cor: string; ativo: boolean },
+) {
+  const d = await getDb();
+  await d.execute(
+    "UPDATE membros SET nome = $1, cor = $2, ativo = $3 WHERE id = $4",
+    [campos.nome, campos.cor, campos.ativo ? 1 : 0, id],
+  );
+}
+
 // ---------- Contas ----------
 
 export async function listarContas(filtro?: {
   anoMes?: string; // "YYYY-MM" — filtra por mês de vencimento
   status?: string;
   categoriaId?: number;
+  membroId?: number;
+  familia?: boolean;
   tipo?: string;
 }): Promise<Conta[]> {
   const d = await getDb();
@@ -99,6 +130,13 @@ export async function listarContas(filtro?: {
   if (filtro?.categoriaId) {
     params.push(filtro.categoriaId);
     clauses.push(`categoria_id = $${params.length}`);
+  }
+  if (filtro?.membroId) {
+    params.push(filtro.membroId);
+    clauses.push(`membro_id = $${params.length}`);
+  }
+  if (filtro?.familia) {
+    clauses.push("membro_id IS NULL");
   }
   if (filtro?.tipo) {
     params.push(filtro.tipo);
@@ -144,7 +182,7 @@ export async function contasDoDia(data: string): Promise<Conta[]> {
 export async function criarConta(nova: NovaConta) {
   const d = await getDb();
   const base =
-    "INSERT INTO contas (descricao, categoria_id, valor_centavos, vencimento, observacoes, tipo, serie_id, parcela_num, parcela_total, recorrente) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)";
+    "INSERT INTO contas (descricao, categoria_id, membro_id, valor_centavos, vencimento, observacoes, tipo, serie_id, parcela_num, parcela_total, recorrente) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)";
 
   if (nova.parcelado && nova.parcela_total > 1) {
     const serie = crypto.randomUUID();
@@ -152,6 +190,7 @@ export async function criarConta(nova: NovaConta) {
       await d.execute(base, [
         `${nova.descricao} (${i + 1}/${nova.parcela_total})`,
         nova.categoria_id,
+        nova.membro_id,
         nova.valor_centavos,
         somarMeses(nova.vencimento, i),
         nova.observacoes,
@@ -168,6 +207,7 @@ export async function criarConta(nova: NovaConta) {
       await d.execute(base, [
         nova.descricao,
         nova.categoria_id,
+        nova.membro_id,
         nova.valor_centavos,
         somarMeses(nova.vencimento, i),
         nova.observacoes,
@@ -182,6 +222,7 @@ export async function criarConta(nova: NovaConta) {
     await d.execute(base, [
       nova.descricao,
       nova.categoria_id,
+      nova.membro_id,
       nova.valor_centavos,
       nova.vencimento,
       nova.observacoes,
@@ -199,6 +240,7 @@ export async function atualizarConta(
   campos: {
     descricao: string;
     categoria_id: number | null;
+    membro_id: number | null;
     valor_centavos: number;
     vencimento: string;
     observacoes: string | null;
@@ -207,10 +249,11 @@ export async function atualizarConta(
 ) {
   const d = await getDb();
   await d.execute(
-    "UPDATE contas SET descricao = $1, categoria_id = $2, valor_centavos = $3, vencimento = $4, observacoes = $5, tipo = $6, notificada = 0, email_enviado = 0 WHERE id = $7",
+    "UPDATE contas SET descricao = $1, categoria_id = $2, membro_id = $3, valor_centavos = $4, vencimento = $5, observacoes = $6, tipo = $7, notificada = 0, email_enviado = 0 WHERE id = $8",
     [
       campos.descricao,
       campos.categoria_id,
+      campos.membro_id,
       campos.valor_centavos,
       campos.vencimento,
       campos.observacoes,
@@ -376,6 +419,7 @@ export interface NovoLembrete {
   hora: string | null;
   recorrencia: string;
   observacoes: string | null;
+  membro_id: number | null;
 }
 
 export async function listarLembretes(): Promise<Lembrete[]> {
@@ -411,8 +455,8 @@ export async function lembretesEntre(
 export async function criarLembrete(l: NovoLembrete) {
   const d = await getDb();
   await d.execute(
-    "INSERT INTO lembretes (titulo, data, hora, recorrencia, observacoes) VALUES ($1, $2, $3, $4, $5)",
-    [l.titulo, l.data, l.hora, l.recorrencia, l.observacoes],
+    "INSERT INTO lembretes (titulo, data, hora, recorrencia, observacoes, membro_id) VALUES ($1, $2, $3, $4, $5, $6)",
+    [l.titulo, l.data, l.hora, l.recorrencia, l.observacoes, l.membro_id],
   );
 }
 
@@ -436,8 +480,8 @@ export async function obterUltimoLembrete(): Promise<Lembrete | null> {
 export async function atualizarLembrete(id: number, l: NovoLembrete) {
   const d = await getDb();
   await d.execute(
-    "UPDATE lembretes SET titulo = $1, data = $2, hora = $3, recorrencia = $4, observacoes = $5, notificado = 0 WHERE id = $6",
-    [l.titulo, l.data, l.hora, l.recorrencia, l.observacoes, id],
+    "UPDATE lembretes SET titulo = $1, data = $2, hora = $3, recorrencia = $4, observacoes = $5, membro_id = $6, notificado = 0 WHERE id = $7",
+    [l.titulo, l.data, l.hora, l.recorrencia, l.observacoes, l.membro_id, id],
   );
 }
 

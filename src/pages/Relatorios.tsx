@@ -21,7 +21,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { contasEntre, listarCategorias } from "../lib/db";
+import { contasEntre, listarCategorias, listarMembros } from "../lib/db";
 import { exportarCsv } from "../lib/csv";
 import {
   MESES,
@@ -31,7 +31,7 @@ import {
   nomeMesAno,
   somarMeses,
 } from "../lib/format";
-import type { Categoria, Conta } from "../lib/types";
+import type { Categoria, Conta, Membro } from "../lib/types";
 
 type Periodo = 3 | 6 | 12;
 
@@ -41,6 +41,8 @@ export default function Relatorios() {
   const [periodo, setPeriodo] = useState<Periodo>(6);
   const [contas, setContas] = useState<Conta[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [membros, setMembros] = useState<Membro[]>([]);
+  const [filtroMembro, setFiltroMembro] = useState("");
   const [mesSelecionado, setMesSelecionado] = useState(anoMesAtual);
   const [exportado, setExportado] = useState(false);
 
@@ -51,12 +53,14 @@ export default function Relatorios() {
 
   const carregar = useCallback(async () => {
     const fim = `${anoMesAtual}-31`;
-    const [cs, cats] = await Promise.all([
+    const [cs, cats, mems] = await Promise.all([
       contasEntre(inicioPeriodo, fim),
       listarCategorias(),
+      listarMembros(true),
     ]);
     setContas(cs);
     setCategorias(cats);
+    setMembros(mems);
   }, [inicioPeriodo, anoMesAtual]);
 
   useEffect(() => {
@@ -67,6 +71,18 @@ export default function Relatorios() {
     () => new Map(categorias.map((c) => [c.id, c])),
     [categorias],
   );
+  const membroPorId = useMemo(
+    () => new Map(membros.map((m) => [m.id, m])),
+    [membros],
+  );
+
+  const contasFiltradas = useMemo(() => {
+    return contas.filter((c) => {
+      if (filtroMembro === "familia") return c.membro_id === null;
+      if (filtroMembro) return c.membro_id === Number(filtroMembro);
+      return true;
+    });
+  }, [contas, filtroMembro]);
 
   const mesesDoPeriodo = useMemo(() => {
     const lista: string[] = [];
@@ -79,7 +95,7 @@ export default function Relatorios() {
   // Evolução mensal: total, pago e pendente por mês
   const evolucao = useMemo(() => {
     return mesesDoPeriodo.map((am) => {
-      const doMes = contas.filter((c) => c.vencimento.startsWith(am));
+      const doMes = contasFiltradas.filter((c) => c.vencimento.startsWith(am));
       const despesas = doMes.filter((c) => c.tipo === "despesa");
       const [, m] = am.split("-").map(Number);
       return {
@@ -96,15 +112,15 @@ export default function Relatorios() {
             .reduce((t, c) => t + c.valor_centavos, 0) / 100,
       };
     });
-  }, [contas, mesesDoPeriodo]);
+  }, [contasFiltradas, mesesDoPeriodo]);
 
   // Gastos por categoria no mês selecionado (apenas despesas)
   const contasDoMes = useMemo(
     () =>
-      contas.filter(
+      contasFiltradas.filter(
         (c) => c.vencimento.startsWith(mesSelecionado) && c.tipo === "despesa",
       ),
-    [contas, mesSelecionado],
+    [contasFiltradas, mesSelecionado],
   );
 
   const porCategoria = useMemo(() => {
@@ -128,12 +144,14 @@ export default function Relatorios() {
   const totalMes = porCategoria.reduce((t, c) => t + c.valor, 0);
 
   async function exportar() {
-    const linhas = contas.map((c) => {
+    const linhas = contasFiltradas.map((c) => {
       const cat = c.categoria_id ? catPorId.get(c.categoria_id) : undefined;
+      const membro = c.membro_id ? membroPorId.get(c.membro_id) : null;
       return [
         c.descricao,
         c.tipo === "receita" ? "Receita" : "Despesa",
         cat?.nome ?? "Sem categoria",
+        membro?.nome ?? "Família inteira",
         formatarData(c.vencimento),
         (c.valor_centavos / 100).toFixed(2).replace(".", ","),
         c.status === "paga"
@@ -150,7 +168,18 @@ export default function Relatorios() {
     });
     const ok = await exportarCsv(
       `organiza-contas-${inicioPeriodo.slice(0, 7)}-a-${anoMesAtual}.csv`,
-      ["Descrição", "Tipo", "Categoria", "Vencimento", "Valor (R$)", "Status", "Pago em", "Parcela", "Observações"],
+      [
+        "Descrição",
+        "Tipo",
+        "Categoria",
+        "Responsável",
+        "Vencimento",
+        "Valor (R$)",
+        "Status",
+        "Pago em",
+        "Parcela",
+        "Observações",
+      ],
       linhas,
     );
     if (ok) {
@@ -176,6 +205,16 @@ export default function Relatorios() {
             <option value={3}>Últimos 3 meses</option>
             <option value={6}>Últimos 6 meses</option>
             <option value={12}>Últimos 12 meses</option>
+          </select>
+          <select value={filtroMembro} onChange={(e) => setFiltroMembro(e.target.value)}>
+            <option value="">Todos os responsáveis</option>
+            <option value="familia">Família inteira</option>
+            {membros.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.nome}
+                {m.ativo !== 1 ? " (arquivado)" : ""}
+              </option>
+            ))}
           </select>
           <button className="btn-primario" onClick={exportar}>
             <Download size={16} /> Exportar CSV

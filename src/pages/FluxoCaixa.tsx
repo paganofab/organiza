@@ -13,10 +13,10 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { contasEntre } from "../lib/db";
+import { contasEntre, listarMembros } from "../lib/db";
 import { useAtualizacaoExterna } from "../lib/eventos";
 import { MESES, formatarMoeda, hojeISO, somarMeses } from "../lib/format";
-import type { Conta } from "../lib/types";
+import type { Conta, Membro } from "../lib/types";
 
 type Horizonte = 6 | 12;
 
@@ -25,6 +25,8 @@ export default function FluxoCaixa() {
   const anoMesAtual = hoje.slice(0, 7);
   const [horizonte, setHorizonte] = useState<Horizonte>(6);
   const [contas, setContas] = useState<Conta[]>([]);
+  const [membros, setMembros] = useState<Membro[]>([]);
+  const [filtroMembro, setFiltroMembro] = useState("");
 
   const fim = useMemo(
     () => somarMeses(`${anoMesAtual}-01`, horizonte - 1).slice(0, 7),
@@ -32,8 +34,12 @@ export default function FluxoCaixa() {
   );
 
   const carregar = useCallback(async () => {
-    const cs = await contasEntre(`${anoMesAtual}-01`, `${fim}-31`);
+    const [cs, mems] = await Promise.all([
+      contasEntre(`${anoMesAtual}-01`, `${fim}-31`),
+      listarMembros(true),
+    ]);
     setContas(cs);
+    setMembros(mems);
   }, [anoMesAtual, fim]);
 
   useEffect(() => {
@@ -50,11 +56,19 @@ export default function FluxoCaixa() {
     return lista;
   }, [anoMesAtual, horizonte]);
 
+  const contasFiltradas = useMemo(() => {
+    return contas.filter((c) => {
+      if (filtroMembro === "familia") return c.membro_id === null;
+      if (filtroMembro) return c.membro_id === Number(filtroMembro);
+      return true;
+    });
+  }, [contas, filtroMembro]);
+
   // Projeção: por mês, despesas e receitas já lançadas + saldo acumulado
   const dados = useMemo(() => {
     let acumulado = 0;
     return meses.map((am) => {
-      const doMes = contas.filter((c) => c.vencimento.startsWith(am));
+      const doMes = contasFiltradas.filter((c) => c.vencimento.startsWith(am));
       const despesas = doMes
         .filter((c) => c.tipo === "despesa")
         .reduce((t, c) => t + c.valor_centavos, 0);
@@ -71,7 +85,7 @@ export default function FluxoCaixa() {
         acumulado: acumulado / 100,
       };
     });
-  }, [contas, meses]);
+  }, [contasFiltradas, meses]);
 
   const totalDespesas = dados.reduce((t, d) => t + d.despesas, 0);
   const totalReceitas = dados.reduce((t, d) => t + d.receitas, 0);
@@ -96,6 +110,16 @@ export default function FluxoCaixa() {
           >
             <option value={6}>Próximos 6 meses</option>
             <option value={12}>Próximos 12 meses</option>
+          </select>
+          <select value={filtroMembro} onChange={(e) => setFiltroMembro(e.target.value)}>
+            <option value="">Todos os responsáveis</option>
+            <option value="familia">Família inteira</option>
+            {membros.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.nome}
+                {m.ativo !== 1 ? " (arquivado)" : ""}
+              </option>
+            ))}
           </select>
         </div>
       </div>

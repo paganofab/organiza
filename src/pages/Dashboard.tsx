@@ -10,6 +10,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
+import { MembroBadge } from "../components/MembroBadge";
 import { IconeCategoria } from "../lib/icons";
 import { useAtualizacaoExterna } from "../lib/eventos";
 import {
@@ -19,6 +20,7 @@ import {
   lembretesPendentesAte,
   listarCategorias,
   listarContas,
+  listarMembros,
   marcarPaga,
 } from "../lib/db";
 import {
@@ -34,6 +36,7 @@ import {
   type Conta,
   type Evento,
   type Lembrete,
+  type Membro,
 } from "../lib/types";
 
 function somar(contas: Conta[]): number {
@@ -49,19 +52,21 @@ export default function Dashboard() {
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [lembretes, setLembretes] = useState<Lembrete[]>([]);
+  const [membros, setMembros] = useState<Membro[]>([]);
 
   const carregar = useCallback(async () => {
     const em14dias = new Date(`${hoje}T00:00:00`);
     em14dias.setDate(em14dias.getDate() + 14);
     const limite = `${em14dias.getFullYear()}-${String(em14dias.getMonth() + 1).padStart(2, "0")}-${String(em14dias.getDate()).padStart(2, "0")}`;
 
-    const [mes, pendentes, prox, evts, cats, lembs] = await Promise.all([
+    const [mes, pendentes, prox, evts, cats, lembs, mems] = await Promise.all([
       listarContas({ anoMes }),
       listarContas({ status: "pendente", tipo: "despesa" }),
       contasEntre(hoje, limite),
       eventosEntre(hoje, limite),
       listarCategorias(),
       lembretesPendentesAte(hoje), // atrasados + de hoje
+      listarMembros(true),
     ]);
     setContasMes(mes);
     setAtrasadasTodas(pendentes.filter((c) => estaAtrasada(c, hoje)));
@@ -71,6 +76,7 @@ export default function Dashboard() {
     setEventos(evts);
     setCategorias(cats);
     setLembretes(lembs);
+    setMembros(mems);
   }, [anoMes, hoje]);
 
   async function concluirLembreteDash(id: number) {
@@ -87,6 +93,10 @@ export default function Dashboard() {
   const catPorId = useMemo(
     () => new Map(categorias.map((c) => [c.id, c])),
     [categorias],
+  );
+  const membroPorId = useMemo(
+    () => new Map(membros.map((m) => [m.id, m])),
+    [membros],
   );
 
   const despesasMes = useMemo(
@@ -146,6 +156,7 @@ export default function Dashboard() {
           ? "vence hoje"
           : `vence em ${dias} dia(s)`;
     const cat = c.categoria_id ? catPorId.get(c.categoria_id) : undefined;
+    const membro = c.membro_id ? membroPorId.get(c.membro_id) : null;
     return (
       <div className="item-linha" key={c.id}>
         <div
@@ -158,6 +169,9 @@ export default function Dashboard() {
           <div className="titulo">{c.descricao}</div>
           <div className="detalhe">
             {formatarData(c.vencimento)} · {quando}
+          </div>
+          <div className="detalhe">
+            <MembroBadge membro={membro} mostrarFamilia />
           </div>
         </div>
         <span className={`badge ${estaAtrasada(c, hoje) ? "atrasada" : "pendente"}`}>
@@ -353,6 +367,7 @@ export default function Dashboard() {
               ) : (
                 lembretes.map((l) => {
                   const atrasado = l.data! < hoje;
+                  const membro = l.membro_id ? membroPorId.get(l.membro_id) : null;
                   return (
                     <div className="item-linha" key={l.id}>
                       <button
@@ -365,6 +380,9 @@ export default function Dashboard() {
                         <div className="detalhe">
                           {formatarData(l.data!)}
                           {l.hora ? ` às ${l.hora}` : ""}
+                        </div>
+                        <div className="detalhe">
+                          <MembroBadge membro={membro} mostrarFamilia />
                         </div>
                       </div>
                       <span

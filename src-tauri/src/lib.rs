@@ -484,6 +484,26 @@ fn migrations() -> Vec<Migration> {
                 ('Alimentação', '#22c55e', 'utensils', 'despesa');
         "#,
         },
+        Migration {
+            version: 7,
+            description: "membros_familia",
+            kind: MigrationKind::Up,
+            sql: r#"
+            CREATE TABLE IF NOT EXISTS membros (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome TEXT NOT NULL UNIQUE,
+                cor TEXT NOT NULL DEFAULT '#4f46e5',
+                ativo INTEGER NOT NULL DEFAULT 1,
+                criado_em TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            ALTER TABLE contas ADD COLUMN membro_id INTEGER REFERENCES membros(id) ON DELETE SET NULL;
+            ALTER TABLE lembretes ADD COLUMN membro_id INTEGER REFERENCES membros(id) ON DELETE SET NULL;
+
+            CREATE INDEX IF NOT EXISTS idx_contas_membro ON contas (membro_id);
+            CREATE INDEX IF NOT EXISTS idx_lembretes_membro ON lembretes (membro_id);
+        "#,
+        },
     ]
 }
 

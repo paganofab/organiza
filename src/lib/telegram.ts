@@ -9,6 +9,7 @@ import {
   excluirLembrete,
   listarCategorias,
   listarLembretes,
+  listarMembros,
   marcarPaga,
   obterConfig,
   obterConta,
@@ -27,6 +28,7 @@ import {
   normalizar,
 } from "./parser";
 import type { Categoria, Conta, Lembrete } from "./types";
+import type { Membro } from "./types";
 
 // Pergunta que lista os lembretes pendentes (com botões para concluir)
 const LISTA_LEMBRETES = /\b(lembretes|tarefas|a fazer|pendencias|to-?do)\b/;
@@ -112,12 +114,17 @@ async function responder(
   });
 }
 
-function textoConfirmacao(conta: Conta, categoriaNome: string | null): string {
+function textoConfirmacao(
+  conta: Conta,
+  categoriaNome: string | null,
+  membroNome?: string | null,
+): string {
   const linhas = [
     `✅ ${conta.tipo === "receita" ? "Receita" : "Conta"} adicionada!`,
     `${conta.descricao} — ${formatarMoeda(conta.valor_centavos)}`,
     `${conta.tipo === "receita" ? "recebimento" : "vencimento"}: ${formatarData(conta.vencimento)}`,
     `categoria: ${categoriaNome ?? "sem categoria"}`,
+    `responsável: ${membroNome ?? "Família"}`,
   ];
   // Mostra a observação só quando é uma nota personalizada (não o marcador padrão)
   if (conta.observacoes && conta.observacoes !== "Adicionada via Telegram") {
@@ -154,14 +161,31 @@ function quandoLembrete(l: Lembrete, hoje: string): string {
   return `${base}${l.hora ? ` ${l.hora}` : ""}`;
 }
 
-function textoLembrete(l: Lembrete, hoje: string): string {
+function textoLembrete(l: Lembrete, hoje: string, membroNome?: string | null): string {
   const linhas = [
     "📝 Lembrete criado!",
     l.titulo,
     quandoLembrete(l, hoje),
+    `responsável: ${membroNome ?? "Família"}`,
   ];
   if (l.recorrencia !== "nenhuma") linhas.push(`repete ${ROTULO_REC[l.recorrencia]}`);
   return linhas.join("\n");
+}
+
+function escaparRegex(texto: string): string {
+  return texto.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function membroDaMensagem(texto: string, membros: Membro[]): Membro | null {
+  const normalizado = normalizar(texto);
+  return (
+    membros.find((m) => {
+      const nome = normalizar(m.nome).trim();
+      if (nome.length < 3) return false;
+      const padrao = escaparRegex(nome).replace(/\s+/g, "\\s+");
+      return new RegExp(`(^|\\s|@)${padrao}(\\s|$)`).test(normalizado);
+    }) ?? null
+  );
 }
 
 function botoesLembrete(l: Lembrete): BotaoInline[] {
@@ -241,16 +265,19 @@ async function processarMensagem(
   // Lembrete: "lembrar de X", "lembrete: Y toda terça"
   const lemb = interpretarLembrete(texto, hoje);
   if (lemb) {
+    const membros = await listarMembros();
+    const membro = membroDaMensagem(texto, membros);
     await criarLembrete({
       titulo: lemb.titulo,
       data: lemb.data,
       hora: lemb.hora,
       recorrencia: lemb.recorrencia,
       observacoes: "Adicionado via Telegram",
+      membro_id: membro?.id ?? null,
     });
     const novo = await obterUltimoLembrete();
     if (novo) {
-      await responder(token, chatId, textoLembrete(novo, hoje), [
+      await responder(token, chatId, textoLembrete(novo, hoje, membro?.nome ?? null), [
         botoesLembrete(novo),
       ]);
       return `Lembrete: ${novo.titulo}`;
@@ -259,6 +286,8 @@ async function processarMensagem(
   }
 
   const categorias = await listarCategorias();
+  const membros = await listarMembros();
+  const membro = membroDaMensagem(texto, membros);
   const resultado = interpretarMensagem(texto, hoje, categorias);
 
   if (!resultado.ok) {
@@ -292,6 +321,7 @@ async function processarMensagem(
   await criarConta({
     descricao: c.descricao,
     categoria_id: categoria?.id ?? null,
+    membro_id: membro?.id ?? null,
     valor_centavos: c.valor_centavos,
     vencimento: c.vencimento,
     observacoes: c.observacao ?? "Adicionada via Telegram",
@@ -308,7 +338,7 @@ async function processarMensagem(
   await responder(
     token,
     chatId,
-    textoConfirmacao(conta, categoria?.nome ?? null) +
+    textoConfirmacao(conta, categoria?.nome ?? null, membro?.nome ?? null) +
       (!categoria ? "\n\n👇 Toque para definir a categoria:" : ""),
     montarTeclado(conta, !!categoria, categorias),
   );
@@ -380,10 +410,12 @@ async function processarCallback(
 
   if (acao === "cat") {
     const categorias = await listarCategorias();
+    const membros = await listarMembros(true);
     const categoria = categorias.find((c) => c.id === Number(extra));
+    const membro = conta.membro_id ? membros.find((m) => m.id === conta.membro_id) : null;
     await atualizarCategoriaConta(conta.id, categoria?.id ?? null);
     await finalizar(`Categoria: ${categoria?.nome ?? "?"}`);
-    await editar(textoConfirmacao(conta, categoria?.nome ?? null), [
+    await editar(textoConfirmacao(conta, categoria?.nome ?? null, membro?.nome ?? null), [
       botoesAcao(conta),
     ]);
     return `${conta.descricao}: categoria ${categoria?.nome ?? "removida"}`;

@@ -3,13 +3,14 @@ import { TrendingDown, TrendingUp } from "lucide-react";
 import Modal from "./Modal";
 import { atualizarConta, criarConta } from "../lib/db";
 import { formatarMoeda, hojeISO, parseMoeda } from "../lib/format";
-import type { Categoria, Conta, TipoConta } from "../lib/types";
+import type { Categoria, Conta, Membro, TipoConta } from "../lib/types";
 
 interface Props {
   aberto: boolean;
   aoFechar: () => void;
   aoSalvar: () => void;
   categorias: Categoria[];
+  membros: Membro[];
   contaEditando: Conta | null;
   dataInicial?: string;
 }
@@ -40,12 +41,14 @@ export default function ContaForm({
   aoFechar,
   aoSalvar,
   categorias,
+  membros,
   contaEditando,
   dataInicial,
 }: Props) {
   const [tipo, setTipo] = useState<TipoConta>("despesa");
   const [descricao, setDescricao] = useState("");
   const [categoriaId, setCategoriaId] = useState<string>("");
+  const [membroId, setMembroId] = useState<string>("");
   const [valor, setValor] = useState("");
   const [vencimento, setVencimento] = useState(hojeISO());
   const [observacoes, setObservacoes] = useState("");
@@ -62,6 +65,13 @@ export default function ContaForm({
     () => categorias.filter((c) => c.tipo === tipo),
     [categorias, tipo],
   );
+  const membrosDisponiveis = useMemo(
+    () =>
+      membros.filter(
+        (m) => m.ativo === 1 || m.id === contaEditando?.membro_id,
+      ),
+    [membros, contaEditando],
+  );
 
   useEffect(() => {
     if (!aberto) return;
@@ -70,6 +80,7 @@ export default function ContaForm({
       setTipo(contaEditando.tipo);
       setDescricao(contaEditando.descricao);
       setCategoriaId(contaEditando.categoria_id?.toString() ?? "");
+      setMembroId(contaEditando.membro_id?.toString() ?? "");
       setValor(
         formatarMoeda(contaEditando.valor_centavos).replace(/R\$\s?/, ""),
       );
@@ -81,6 +92,7 @@ export default function ContaForm({
       setTipo("despesa");
       setDescricao("");
       setCategoriaId("");
+      setMembroId("");
       setValor("");
       setVencimento(dataInicial ?? hojeISO());
       setObservacoes("");
@@ -113,6 +125,7 @@ export default function ContaForm({
         await atualizarConta(contaEditando.id, {
           descricao: descricao.trim(),
           categoria_id: categoriaId ? Number(categoriaId) : null,
+          membro_id: membroId ? Number(membroId) : null,
           valor_centavos: centavos,
           vencimento,
           observacoes: observacoes.trim() || null,
@@ -122,6 +135,7 @@ export default function ContaForm({
         await criarConta({
           descricao: descricao.trim(),
           categoria_id: categoriaId ? Number(categoriaId) : null,
+          membro_id: membroId ? Number(membroId) : null,
           valor_centavos: centavos,
           vencimento,
           observacoes: observacoes.trim() || null,
@@ -196,6 +210,18 @@ export default function ContaForm({
               placeholder="0,00"
               inputMode="decimal"
             />
+          </label>
+          <label className="campo">
+            Responsável
+            <select value={membroId} onChange={(e) => setMembroId(e.target.value)}>
+              <option value="">Família inteira</option>
+              {membrosDisponiveis.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.nome}
+                  {m.ativo !== 1 ? " (arquivado)" : ""}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="campo">
             {parcelado ? t.dataParcelada : t.data}

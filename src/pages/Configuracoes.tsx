@@ -12,8 +12,10 @@ import {
   Send,
   Tags,
   TriangleAlert,
+  Users,
   X,
 } from "lucide-react";
+import { MembroBadge } from "../components/MembroBadge";
 import { statusTelegram, testarToken } from "../lib/telegram";
 import { exportarBackup, restaurarBackup } from "../lib/backup";
 import {
@@ -73,16 +75,19 @@ function StatusTelegram() {
 import { ICONES_CATEGORIA, IconeCategoria } from "../lib/icons";
 import {
   atualizarCategoria,
+  atualizarMembro,
   criarCategoria,
+  criarMembro,
   definirOrcamento,
   excluirCategoria,
   listarCategorias,
+  listarMembros,
   obterConfig,
   salvarConfig,
 } from "../lib/db";
 import { formatarMoeda, parseMoeda } from "../lib/format";
 import { DIAS_AVISO_PADRAO } from "../lib/reminders";
-import type { Categoria, SmtpConfig, TipoConta } from "../lib/types";
+import type { Categoria, Membro, SmtpConfig, TipoConta } from "../lib/types";
 
 const SMTP_VAZIO: SmtpConfig = {
   host: "",
@@ -97,6 +102,12 @@ export default function Configuracoes() {
   const [smtp, setSmtp] = useState<SmtpConfig>(SMTP_VAZIO);
   const [diasAviso, setDiasAviso] = useState(DIAS_AVISO_PADRAO);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [membros, setMembros] = useState<Membro[]>([]);
+  const [novoMembroNome, setNovoMembroNome] = useState("");
+  const [novoMembroCor, setNovoMembroCor] = useState("#4f46e5");
+  const [editandoMembroId, setEditandoMembroId] = useState<number | null>(null);
+  const [membroEditNome, setMembroEditNome] = useState("");
+  const [membroEditCor, setMembroEditCor] = useState("#4f46e5");
   const [novaCategoria, setNovaCategoria] = useState("");
   const [novoIcone, setNovoIcone] = useState("tag");
   const [novaCor, setNovaCor] = useState("#6366f1");
@@ -130,6 +141,7 @@ export default function Configuracoes() {
       resumoHora,
       manterSalvo,
       manterAtivo,
+      membrosLista,
     ] =
       await Promise.all([
         obterConfig("smtp"),
@@ -141,12 +153,14 @@ export default function Configuracoes() {
         obterConfig("telegram_resumo_hora"),
         obterConfig(CONFIG_MANTER_ACORDADO),
         manterAcordadoAtivo().catch(() => false),
+        listarMembros(true),
       ]);
     setTgToken(token ?? "");
     setTgChat(chat);
     setTgResumoHora(resumoHora ?? "");
     setAutostart(autoLigado);
     setManterAcordado(manterSalvo === "1" || manterAtivo);
+    setMembros(membrosLista);
     setOrcamentos(
       Object.fromEntries(
         cats.map((c) => [
@@ -227,6 +241,67 @@ export default function Configuracoes() {
     } catch {
       setErro("Já existe uma categoria com esse nome.");
     }
+  }
+
+  async function adicionarMembro(e: FormEvent) {
+    e.preventDefault();
+    const nome = novoMembroNome.trim();
+    if (!nome) return;
+    try {
+      await criarMembro(nome, novoMembroCor);
+      setNovoMembroNome("");
+      await carregar();
+      avisar(`Membro "${nome}" adicionado.`);
+    } catch {
+      setErro("Já existe um membro com esse nome.");
+    }
+  }
+
+  function iniciarEdicaoMembro(m: Membro) {
+    setEditandoMembroId(m.id);
+    setMembroEditNome(m.nome);
+    setMembroEditCor(m.cor);
+    setErro("");
+  }
+
+  function cancelarEdicaoMembro() {
+    setEditandoMembroId(null);
+    setMembroEditNome("");
+    setMembroEditCor("#4f46e5");
+  }
+
+  async function salvarMembro(m: Membro) {
+    const nome = membroEditNome.trim();
+    if (!nome) {
+      setErro("Informe o nome do membro.");
+      return;
+    }
+    try {
+      await atualizarMembro(m.id, {
+        nome,
+        cor: membroEditCor,
+        ativo: m.ativo === 1,
+      });
+      cancelarEdicaoMembro();
+      await carregar();
+      avisar(`Membro "${nome}" atualizado.`);
+    } catch {
+      setErro("Já existe um membro com esse nome.");
+    }
+  }
+
+  async function alternarMembroAtivo(m: Membro) {
+    await atualizarMembro(m.id, {
+      nome: m.nome,
+      cor: m.cor,
+      ativo: m.ativo !== 1,
+    });
+    await carregar();
+    avisar(
+      m.ativo === 1
+        ? `${m.nome} foi arquivado.`
+        : `${m.nome} foi reativado.`,
+    );
   }
 
   function iniciarEdicaoCategoria(c: Categoria) {
@@ -584,6 +659,109 @@ export default function Configuracoes() {
             </button>
           </div>
         </form>
+
+        <div className="card">
+          <h2>
+            <Users size={16} color="var(--accent)" /> Membros da família
+          </h2>
+          <form onSubmit={adicionarMembro} style={{ marginBottom: 14 }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                value={novoMembroNome}
+                onChange={(e) => setNovoMembroNome(e.target.value)}
+                placeholder="Novo membro…"
+              />
+              <input
+                type="color"
+                value={novoMembroCor}
+                onChange={(e) => setNovoMembroCor(e.target.value)}
+                style={{ width: 48, padding: 4, height: 38, flexShrink: 0 }}
+                title="Cor do membro"
+              />
+              <button type="submit" className="btn-primario">
+                Adicionar
+              </button>
+            </div>
+          </form>
+          <p style={{ color: "var(--text-soft)", marginTop: 0 }}>
+            Use membros para atribuir contas, receitas e lembretes a uma pessoa
+            específica ou deixar como família inteira.
+          </p>
+          <div className="lista-itens">
+            {membros.length === 0 ? (
+              <div className="vazio">Nenhum membro cadastrado.</div>
+            ) : (
+              membros.map((m) => {
+                const editando = editandoMembroId === m.id;
+                return (
+                  <div
+                    className={`item-linha membro-linha ${m.ativo ? "" : "inativo"}`}
+                    key={m.id}
+                  >
+                    {editando ? (
+                      <div className="membro-editor">
+                        <input
+                          value={membroEditNome}
+                          onChange={(e) => setMembroEditNome(e.target.value)}
+                          autoFocus
+                        />
+                        <input
+                          type="color"
+                          value={membroEditCor}
+                          onChange={(e) => setMembroEditCor(e.target.value)}
+                          title="Cor do membro"
+                        />
+                        <button
+                          type="button"
+                          className="btn-mini btn-secundario"
+                          onClick={cancelarEdicaoMembro}
+                        >
+                          <X size={13} /> Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-mini btn-primario"
+                          onClick={() => salvarMembro(m)}
+                        >
+                          <Check size={13} /> Salvar
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="info">
+                          <div className="titulo">
+                            <MembroBadge membro={m} />
+                            {m.ativo !== 1 && (
+                              <span className="badge pendente">Arquivado</span>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn-mini btn-secundario"
+                          onClick={() => iniciarEdicaoMembro(m)}
+                        >
+                          <Pencil size={13} /> Editar
+                        </button>
+                        <button
+                          type="button"
+                          className={
+                            m.ativo === 1
+                              ? "btn-mini btn-perigo"
+                              : "btn-mini btn-secundario"
+                          }
+                          onClick={() => alternarMembroAtivo(m)}
+                        >
+                          {m.ativo === 1 ? "Arquivar" : "Reativar"}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
 
         <div className="card">
           <h2>

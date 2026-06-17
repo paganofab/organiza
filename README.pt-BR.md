@@ -30,12 +30,14 @@
 - **💸 Contas e receitas** — CRUD completo com categorias, lançamentos **recorrentes**, **parcelamentos** (ex: 12×), status de pago/recebido, anexo de comprovantes e seletor despesa/receita.
 - **📅 Calendário** — visão mensal combinando eventos, vencimentos de contas e lembretes.
 - **🔔 Lembretes (lista de tarefas)** — tarefas com data/hora opcional, **recorrência** (diária/semanal/mensal), conclusão por checkbox e notificação do sistema ao vencer.
+- **👨‍👩‍👧‍👦 Membros da família** — crie membros e atribua contas, receitas e lembretes a uma pessoa ou à família inteira, com filtros em contas, lembretes, relatórios e fluxo de caixa.
 - **📈 Relatórios e fluxo de caixa** — evolução mensal, gastos por categoria, exportação para CSV e previsão de fluxo de caixa de 6–12 meses com base nos compromissos já lançados.
 - **🎯 Orçamento por categoria** — defina um teto mensal e acompanhe o consumo no dashboard.
 - **🤖 Bot do Telegram** — adicione contas, receitas e lembretes por texto, em português natural:
   - `conta de água 12 dezembro 250 reais`
   - `recebi 5500 salário dia 5`
   - `lembrar de ligar pro médico amanhã às 9h`
+  - Inclua o nome de um membro da família para atribuir o lançamento a ele
   - Faça perguntas: `saldo`, `quanto gastei`, `quanto gastei em comida`, `próximos vencimentos`, `atrasadas`, `lembretes`
   - Botões para definir categoria, marcar como pago/concluído ou excluir
   - **Resumo diário** opcional toda manhã com o que vence no dia + atrasadas

@@ -30,12 +30,14 @@
 - **💸 Bills & income** — full CRUD with categories, **recurring** entries, **installments** (e.g. 12×), paid/received status, receipt attachments, and an income/expense toggle.
 - **📅 Calendar** — monthly view mixing events, bill due dates and reminders.
 - **🔔 Reminders (to-do list)** — tasks with optional date/time, **recurrence** (daily/weekly/monthly), completion checkbox, and system notifications when due.
+- **👨‍👩‍👧‍👦 Family members** — create family members and assign bills, income and reminders to one person or the whole family, with filters across bills, reminders, reports and cash flow.
 - **📈 Reports & cash flow** — monthly evolution, spending by category, CSV export, and a 6–12 month cash-flow forecast based on commitments already entered.
 - **🎯 Per-category budgets** — set a monthly cap and track consumption on the dashboard.
 - **🤖 Telegram bot** — add bills, income and reminders by text from your phone, in natural Portuguese:
   - `conta de água 12 dezembro 250 reais`
   - `recebi 5500 salário dia 5`
   - `lembrar de ligar pro médico amanhã às 9h`
+  - Include a family member's name to assign the entry to them
   - Ask questions: `saldo`, `quanto gastei`, `quanto gastei em comida`, `próximos vencimentos`, `atrasadas`, `lembretes`
   - Inline buttons to set category, mark paid/done, or delete
   - Optional **daily morning digest** of what's due today + overdue

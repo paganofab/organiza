@@ -1,7 +1,7 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import Modal from "./Modal";
 import { atualizarLembrete, criarLembrete } from "../lib/db";
-import type { Lembrete, Recorrencia } from "../lib/types";
+import type { Lembrete, Membro, Recorrencia } from "../lib/types";
 
 const RECORRENCIAS: { valor: Recorrencia; nome: string }[] = [
   { valor: "nenhuma", nome: "Não se repete" },
@@ -15,6 +15,7 @@ interface Props {
   aoFechar: () => void;
   aoSalvar: () => void;
   lembreteEditando: Lembrete | null;
+  membros: Membro[];
   dataInicial?: string;
 }
 
@@ -23,6 +24,7 @@ export default function LembreteForm({
   aoFechar,
   aoSalvar,
   lembreteEditando,
+  membros,
   dataInicial,
 }: Props) {
   const [titulo, setTitulo] = useState("");
@@ -30,8 +32,17 @@ export default function LembreteForm({
   const [data, setData] = useState("");
   const [hora, setHora] = useState("");
   const [recorrencia, setRecorrencia] = useState<Recorrencia>("nenhuma");
+  const [membroId, setMembroId] = useState("");
   const [observacoes, setObservacoes] = useState("");
   const [erro, setErro] = useState("");
+
+  const membrosDisponiveis = useMemo(
+    () =>
+      membros.filter(
+        (m) => m.ativo === 1 || m.id === lembreteEditando?.membro_id,
+      ),
+    [membros, lembreteEditando],
+  );
 
   useEffect(() => {
     if (!aberto) return;
@@ -42,6 +53,7 @@ export default function LembreteForm({
       setData(lembreteEditando.data ?? "");
       setHora(lembreteEditando.hora ?? "");
       setRecorrencia(lembreteEditando.recorrencia);
+      setMembroId(lembreteEditando.membro_id?.toString() ?? "");
       setObservacoes(lembreteEditando.observacoes ?? "");
     } else {
       setTitulo("");
@@ -49,6 +61,7 @@ export default function LembreteForm({
       setData(dataInicial ?? "");
       setHora("");
       setRecorrencia("nenhuma");
+      setMembroId("");
       setObservacoes("");
     }
   }, [aberto, lembreteEditando, dataInicial]);
@@ -64,6 +77,7 @@ export default function LembreteForm({
       hora: comData && hora ? hora : null,
       recorrencia: comData ? recorrencia : "nenhuma",
       observacoes: observacoes.trim() || null,
+      membro_id: membroId ? Number(membroId) : null,
     };
     try {
       if (lembreteEditando) {
@@ -138,6 +152,19 @@ export default function LembreteForm({
               </label>
             </>
           )}
+
+          <label className="campo largura-total">
+            Responsável
+            <select value={membroId} onChange={(e) => setMembroId(e.target.value)}>
+              <option value="">Família inteira</option>
+              {membrosDisponiveis.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.nome}
+                  {m.ativo !== 1 ? " (arquivado)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <label className="campo largura-total">
             Observações

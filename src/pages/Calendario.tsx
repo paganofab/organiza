@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import EventoForm from "../components/EventoForm";
 import { useAtualizacaoExterna } from "../lib/eventos";
-import { contasEntre, eventosEntre, lembretesEntre } from "../lib/db";
+import { contasEntre, eventosEntre, lembretesEntre, listarMembros } from "../lib/db";
 import {
   DIAS_SEMANA,
   formatarMoeda,
@@ -10,7 +10,7 @@ import {
   nomeMesAno,
   somarMeses,
 } from "../lib/format";
-import type { Conta, Evento, Lembrete } from "../lib/types";
+import type { Conta, Evento, Lembrete, Membro } from "../lib/types";
 
 interface Dia {
   iso: string;
@@ -43,6 +43,7 @@ export default function Calendario() {
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [contas, setContas] = useState<Conta[]>([]);
   const [lembretes, setLembretes] = useState<Lembrete[]>([]);
+  const [membros, setMembros] = useState<Membro[]>([]);
   const [formAberto, setFormAberto] = useState(false);
   const [editando, setEditando] = useState<Evento | null>(null);
   const [dataNova, setDataNova] = useState<string>(hoje);
@@ -52,14 +53,16 @@ export default function Calendario() {
   const carregar = useCallback(async () => {
     const inicio = grade[0].iso;
     const fim = grade[grade.length - 1].iso;
-    const [evts, cts, lembs] = await Promise.all([
+    const [evts, cts, lembs, mems] = await Promise.all([
       eventosEntre(inicio, fim),
       contasEntre(inicio, fim),
       lembretesEntre(inicio, fim),
+      listarMembros(true),
     ]);
     setEventos(evts);
     setContas(cts);
     setLembretes(lembs);
+    setMembros(mems);
   }, [grade]);
 
   useEffect(() => {
@@ -86,6 +89,11 @@ export default function Calendario() {
     for (const l of lembretes) if (l.data) get(l.data).lembretes.push(l);
     return mapa;
   }, [eventos, contas, lembretes]);
+
+  const membroPorId = useMemo(
+    () => new Map(membros.map((m) => [m.id, m])),
+    [membros],
+  );
 
   function clicarDia(d: Dia) {
     setEditando(null);
@@ -162,9 +170,10 @@ export default function Calendario() {
               }
               for (const c of itens?.contas ?? []) {
                 const receita = c.tipo === "receita";
+                const membro = c.membro_id ? membroPorId.get(c.membro_id) : null;
                 pilulas.push({
                   chave: `c${c.id}`,
-                  texto: `${receita ? "+" : ""}${c.descricao} · ${formatarMoeda(c.valor_centavos)}`,
+                  texto: `${membro ? `${membro.nome} · ` : ""}${receita ? "+" : ""}${c.descricao} · ${formatarMoeda(c.valor_centavos)}`,
                   cor: receita
                     ? c.status === "paga"
                       ? "#16a34a"
@@ -177,9 +186,10 @@ export default function Calendario() {
                 });
               }
               for (const l of itens?.lembretes ?? []) {
+                const membro = l.membro_id ? membroPorId.get(l.membro_id) : null;
                 pilulas.push({
                   chave: `l${l.id}`,
-                  texto: `✓ ${l.titulo}`,
+                  texto: `✓ ${membro ? `${membro.nome} · ` : ""}${l.titulo}`,
                   cor: l.concluido ? "#9ca3af" : "#7c3aed",
                 });
               }
