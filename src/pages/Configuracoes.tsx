@@ -3,13 +3,16 @@ import { invoke } from "@tauri-apps/api/core";
 import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { open as abrirDialogo } from "@tauri-apps/plugin-dialog";
 import {
+  Check,
   CircleCheck,
   DatabaseBackup,
   Mail,
+  Pencil,
   Power,
   Send,
   Tags,
   TriangleAlert,
+  X,
 } from "lucide-react";
 import { statusTelegram, testarToken } from "../lib/telegram";
 import { exportarBackup, restaurarBackup } from "../lib/backup";
@@ -69,6 +72,7 @@ function StatusTelegram() {
 }
 import { ICONES_CATEGORIA, IconeCategoria } from "../lib/icons";
 import {
+  atualizarCategoria,
   criarCategoria,
   definirOrcamento,
   excluirCategoria,
@@ -97,6 +101,12 @@ export default function Configuracoes() {
   const [novoIcone, setNovoIcone] = useState("tag");
   const [novaCor, setNovaCor] = useState("#6366f1");
   const [novoTipo, setNovoTipo] = useState<TipoConta>("despesa");
+  const [editandoCategoriaId, setEditandoCategoriaId] = useState<number | null>(
+    null,
+  );
+  const [categoriaEditNome, setCategoriaEditNome] = useState("");
+  const [categoriaEditCor, setCategoriaEditCor] = useState("#6366f1");
+  const [categoriaEditIcone, setCategoriaEditIcone] = useState("tag");
   const [mensagem, setMensagem] = useState("");
   const [erro, setErro] = useState("");
   const [testando, setTestando] = useState(false);
@@ -214,6 +224,41 @@ export default function Configuracoes() {
       );
       setNovaCategoria("");
       await carregar();
+    } catch {
+      setErro("Já existe uma categoria com esse nome.");
+    }
+  }
+
+  function iniciarEdicaoCategoria(c: Categoria) {
+    setEditandoCategoriaId(c.id);
+    setCategoriaEditNome(c.nome);
+    setCategoriaEditCor(c.cor);
+    setCategoriaEditIcone(c.icone || "tag");
+    setErro("");
+  }
+
+  function cancelarEdicaoCategoria() {
+    setEditandoCategoriaId(null);
+    setCategoriaEditNome("");
+    setCategoriaEditCor("#6366f1");
+    setCategoriaEditIcone("tag");
+  }
+
+  async function salvarCategoria(c: Categoria) {
+    const nome = categoriaEditNome.trim();
+    if (!nome) {
+      setErro("Informe o nome da categoria.");
+      return;
+    }
+    try {
+      await atualizarCategoria(c.id, {
+        nome,
+        cor: categoriaEditCor,
+        icone: categoriaEditIcone || "tag",
+      });
+      cancelarEdicaoCategoria();
+      await carregar();
+      avisar(`Categoria "${nome}" atualizada.`);
     } catch {
       setErro("Já existe uma categoria com esse nome.");
     }
@@ -611,40 +656,124 @@ export default function Configuracoes() {
               <div className="lista-itens">
                 {categorias
                   .filter((c) => c.tipo === tipoGrupo)
-                  .map((c) => (
-                    <div className="item-linha" key={c.id}>
+                  .map((c) => {
+                    const editando = editandoCategoriaId === c.id;
+                    return (
                       <div
-                        className="icone-cat"
-                        style={{ background: `${c.cor}22` }}
+                        className={`item-linha categoria-linha ${editando ? "editando" : ""}`}
+                        key={c.id}
                       >
-                        <IconeCategoria nome={c.icone} cor={c.cor} />
+                        {editando ? (
+                          <div className="categoria-editor">
+                            <div className="categoria-editor-topo">
+                              <div
+                                className="icone-cat"
+                                style={{ background: `${categoriaEditCor}22` }}
+                              >
+                                <IconeCategoria
+                                  nome={categoriaEditIcone}
+                                  cor={categoriaEditCor}
+                                />
+                              </div>
+                              <input
+                                value={categoriaEditNome}
+                                onChange={(e) =>
+                                  setCategoriaEditNome(e.target.value)
+                                }
+                                autoFocus
+                              />
+                              <input
+                                type="color"
+                                value={categoriaEditCor}
+                                onChange={(e) =>
+                                  setCategoriaEditCor(e.target.value)
+                                }
+                                title="Cor da categoria"
+                              />
+                            </div>
+                            <div className="seletor-icones compacto">
+                              {Object.keys(ICONES_CATEGORIA).map((slug) => (
+                                <button
+                                  type="button"
+                                  key={slug}
+                                  className={`opcao-icone ${categoriaEditIcone === slug ? "selecionado" : ""}`}
+                                  onClick={() => setCategoriaEditIcone(slug)}
+                                  title={slug}
+                                >
+                                  <IconeCategoria
+                                    nome={slug}
+                                    size={16}
+                                    cor={
+                                      categoriaEditIcone === slug
+                                        ? categoriaEditCor
+                                        : "var(--text-soft)"
+                                    }
+                                  />
+                                </button>
+                              ))}
+                            </div>
+                            <div className="categoria-editor-acoes">
+                              <button
+                                type="button"
+                                className="btn-mini btn-secundario"
+                                onClick={cancelarEdicaoCategoria}
+                              >
+                                <X size={13} /> Cancelar
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-mini btn-primario"
+                                onClick={() => salvarCategoria(c)}
+                              >
+                                <Check size={13} /> Salvar
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div
+                              className="icone-cat"
+                              style={{ background: `${c.cor}22` }}
+                            >
+                              <IconeCategoria nome={c.icone} cor={c.cor} />
+                            </div>
+                            <div className="info">
+                              <div className="titulo">{c.nome}</div>
+                            </div>
+                            {c.tipo === "despesa" && (
+                              <input
+                                className="campo-orcamento"
+                                placeholder="Orçamento"
+                                inputMode="decimal"
+                                value={orcamentos[c.id] ?? ""}
+                                onChange={(e) =>
+                                  setOrcamentos({
+                                    ...orcamentos,
+                                    [c.id]: e.target.value,
+                                  })
+                                }
+                                onBlur={() => salvarOrcamento(c)}
+                              />
+                            )}
+                            <button
+                              type="button"
+                              className="btn-mini btn-secundario"
+                              onClick={() => iniciarEdicaoCategoria(c)}
+                            >
+                              <Pencil size={13} /> Editar
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-mini btn-perigo"
+                              onClick={() => removerCategoria(c)}
+                            >
+                              Excluir
+                            </button>
+                          </>
+                        )}
                       </div>
-                      <div className="info">
-                        <div className="titulo">{c.nome}</div>
-                      </div>
-                      {c.tipo === "despesa" && (
-                        <input
-                          className="campo-orcamento"
-                          placeholder="Orçamento"
-                          inputMode="decimal"
-                          value={orcamentos[c.id] ?? ""}
-                          onChange={(e) =>
-                            setOrcamentos({
-                              ...orcamentos,
-                              [c.id]: e.target.value,
-                            })
-                          }
-                          onBlur={() => salvarOrcamento(c)}
-                        />
-                      )}
-                      <button
-                        className="btn-mini btn-perigo"
-                        onClick={() => removerCategoria(c)}
-                      >
-                        Excluir
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
               </div>
             </div>
           ))}

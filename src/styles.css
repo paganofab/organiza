@@ -653,11 +653,19 @@ td.num, th.num {
   gap: 6px;
 }
 
+.seletor-icones.compacto {
+  grid-template-columns: repeat(auto-fill, minmax(30px, 1fr));
+}
+
 .opcao-icone {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 8px 0;
+}
+
+.seletor-icones.compacto .opcao-icone {
+  padding: 6px 0;
 }
 
 .opcao-icone.selecionado {
@@ -723,6 +731,35 @@ td.num, th.num {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin: 16px 0 4px;
+}
+
+.categoria-linha.editando {
+  align-items: stretch;
+}
+
+.categoria-editor {
+  flex: 1;
+  min-width: 0;
+}
+
+.categoria-editor-topo {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 48px;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.categoria-editor-topo input[type="color"] {
+  height: 38px;
+  padding: 4px;
+}
+
+.categoria-editor-acoes {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 /* ---------- Orçamentos ---------- */

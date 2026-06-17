@@ -53,6 +53,17 @@ export async function criarCategoria(
   );
 }
 
+export async function atualizarCategoria(
+  id: number,
+  campos: { nome: string; cor: string; icone: string },
+) {
+  const d = await getDb();
+  await d.execute(
+    "UPDATE categorias SET nome = $1, cor = $2, icone = $3 WHERE id = $4",
+    [campos.nome, campos.cor, campos.icone, id],
+  );
+}
+
 export async function excluirCategoria(id: number) {
   const d = await getDb();
   await d.execute("DELETE FROM categorias WHERE id = $1", [id]);
