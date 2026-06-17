@@ -5,10 +5,51 @@ import {
   listarLembretes,
 } from "./db";
 import { diffDias, formatarData, formatarMoeda, hojeISO } from "./format";
-import { estaAtrasada, type Conta, type Lembrete } from "./types";
+import { encontrarCategoriaPorTexto, normalizar } from "./parser";
+import { estaAtrasada, type Categoria, type Conta, type Lembrete } from "./types";
 
 function soma(contas: Conta[]): number {
   return contas.reduce((t, c) => t + c.valor_centavos, 0);
+}
+
+function extrairTermoCategoriaGastos(texto: string): string | null {
+  const t = normalizar(texto)
+    .replace(/[?!.,]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const m = t.match(
+    /\b(?:quanto\s+)?(?:gastei|gasto|gastos|despesas?|saiu|foi)\b.*?\b(?:com|em|de|da|do|no|na)\s+(.+)$/,
+  );
+  if (!m) return null;
+
+  const termo = m[1]
+    .replace(/\b(?:nesse|neste|esse|este)\s+mes\b.*$/, "")
+    .replace(/\bmes\s+atual\b.*$/, "")
+    .replace(/\b(?:hoje|ontem|essa\s+semana|esta\s+semana|semana)\b.*$/, "")
+    .replace(/\b(?:ano|ano\s+atual)\b.*$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!termo || /^(?:mes|atual|semana|ano)$/.test(termo)) return null;
+  return termo;
+}
+
+function categoriaConsultaGastos(
+  texto: string,
+  categorias: Categoria[],
+): { termo: string; categoria: Categoria | null } | null {
+  const termo = extrairTermoCategoriaGastos(texto);
+  if (!termo) return null;
+  return {
+    termo,
+    categoria:
+      (encontrarCategoriaPorTexto(
+        termo,
+        categorias,
+        "despesa",
+      ) as Categoria | null) ?? null,
+  };
 }
 
 /** Saldo do mês atual: receitas − despesas, com detalhamento. */
@@ -28,14 +69,45 @@ export async function respostaSaldo(): Promise<string> {
   ].join("\n");
 }
 
-/** Quanto já foi gasto no mês, com as 3 maiores categorias. */
-export async function respostaGastos(): Promise<string> {
+/** Quanto já foi gasto no mês, opcionalmente filtrando por categoria. */
+export async function respostaGastos(textoConsulta?: string): Promise<string> {
   const anoMes = hojeISO().slice(0, 7);
   const [contas, categorias] = await Promise.all([
     listarContas({ anoMes, tipo: "despesa" }),
     listarCategorias(),
   ]);
   if (!contas.length) return "Nenhuma despesa lançada neste mês.";
+
+  const filtro = textoConsulta
+    ? categoriaConsultaGastos(textoConsulta, categorias)
+    : null;
+
+  if (filtro && !filtro.categoria) {
+    const disponiveis = categorias
+      .filter((c) => c.tipo === "despesa")
+      .map((c) => c.nome)
+      .join(", ");
+    return `Não encontrei uma categoria para "${filtro.termo}". Categorias disponíveis: ${disponiveis}.`;
+  }
+
+  if (filtro?.categoria) {
+    const filtradas = contas.filter(
+      (c) => c.categoria_id === filtro.categoria!.id,
+    );
+    if (!filtradas.length) {
+      return `Nenhuma despesa em ${filtro.categoria.nome} lançada neste mês.`;
+    }
+
+    const maiores = [...filtradas]
+      .sort((a, b) => b.valor_centavos - a.valor_centavos)
+      .slice(0, 5);
+    return [
+      `💸 ${filtro.categoria.nome} neste mês: ${formatarMoeda(soma(filtradas))}`,
+      `${filtradas.length} lançamento(s).`,
+      "Maiores lançamentos:",
+      ...maiores.map((c) => `• ${c.descricao}: ${formatarMoeda(c.valor_centavos)}`),
+    ].join("\n");
+  }
 
   const catNome = new Map(categorias.map((c) => [c.id, c.nome]));
   const porCat = new Map<string, number>();
@@ -184,7 +256,7 @@ export async function tentarConsulta(texto: string): Promise<string | null> {
     return respostaSaldo();
   }
   if (/\b(gast|despesa|quanto gastei|quanto saiu)\w*/.test(t)) {
-    return respostaGastos();
+    return respostaGastos(t);
   }
   if (/\b(atrasad|vencid|devendo)\w*/.test(t)) {
     return respostaAtrasadas();

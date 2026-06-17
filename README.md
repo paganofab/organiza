@@ -36,7 +36,7 @@
   - `conta de água 12 dezembro 250 reais`
   - `recebi 5500 salário dia 5`
   - `lembrar de ligar pro médico amanhã às 9h`
-  - Ask questions: `saldo`, `quanto gastei`, `próximos vencimentos`, `atrasadas`, `lembretes`
+  - Ask questions: `saldo`, `quanto gastei`, `quanto gastei em comida`, `próximos vencimentos`, `atrasadas`, `lembretes`
   - Inline buttons to set category, mark paid/done, or delete
   - Optional **daily morning digest** of what's due today + overdue
 - **💾 Backup & restore** — automatic daily backups (keeps the last 10) plus manual export/import.

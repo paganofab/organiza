@@ -475,6 +475,15 @@ fn migrations() -> Vec<Migration> {
             CREATE INDEX IF NOT EXISTS idx_lembretes_concluido ON lembretes (concluido);
         "#,
         },
+        Migration {
+            version: 6,
+            description: "categoria_alimentacao",
+            kind: MigrationKind::Up,
+            sql: r#"
+            INSERT OR IGNORE INTO categorias (nome, cor, icone, tipo) VALUES
+                ('Alimentação', '#22c55e', 'utensils', 'despesa');
+        "#,
+        },
     ]
 }
 

@@ -30,16 +30,17 @@ const MESES_NOMES: Record<string, number> = {
 };
 
 // palavra-chave normalizada → nome canônico da categoria
-const PALAVRAS_CATEGORIA: [RegExp, string][] = [
+export const PALAVRAS_CATEGORIA: [RegExp, string][] = [
   [/\b(agua|saneamento|sabesp)\b/, "Água"],
   [/\b(luz|energia|eletrica|enel|cemig|copel|light)\b/, "Energia"],
   [/\b(internet|wifi|telefone|celular|vivo|claro|tim|oi|fibra)\b/, "Internet/Telefone"],
   [/\b(aluguel|condominio|moradia|imobiliaria)\b/, "Moradia"],
   [/\b(cartao|fatura|nubank|credito)\b/, "Cartão de Crédito"],
+  [/\b(comida|alimentacao|alimento|mercado|supermercado|feira|padaria|acougue|hortifruti|restaurante|lanchonete|lanche|almoco|jantar|marmita|pizza|delivery|entrega|ifood|rappi|aiqfome|uber\s*eats|take\s*out|takeout|bar)\b/, "Alimentação"],
   [/\b(uber|gasolina|combustivel|onibus|metro|estacionamento|pedagio|transporte|carro|mecanico)\b/, "Transporte"],
   [/\b(medico|dentista|farmacia|remedio|consulta|exame|saude|academia)\b/, "Saúde"],
   [/\b(escola|faculdade|curso|mensalidade|educacao|livro)\b/, "Educação"],
-  [/\b(cinema|show|viagem|restaurante|bar|lazer|festa|presente)\b/, "Lazer"],
+  [/\b(cinema|show|viagem|lazer|festa|presente)\b/, "Lazer"],
   [/\b(netflix|spotify|disney|hbo|max|prime|youtube|assinatura|streaming|icloud)\b/, "Assinaturas"],
   [/\b(imposto|iptu|ipva|darf|taxa|multa)\b/, "Impostos"],
   [/\b(salario|pagamento|holerite)\b/, "Salário"],
@@ -53,6 +54,34 @@ export function normalizar(texto: string): string {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
+}
+
+export function encontrarCategoriaPorTexto(
+  texto: string,
+  categorias: { nome: string; tipo: string }[],
+  tipo?: "despesa" | "receita",
+): { nome: string; tipo: string } | null {
+  const normalizado = normalizar(texto).replace(/\s+/g, " ").trim();
+  if (normalizado.length < 3) return null;
+  const elegiveis = tipo ? categorias.filter((c) => c.tipo === tipo) : categorias;
+
+  for (const [regex, nome] of PALAVRAS_CATEGORIA) {
+    if (regex.test(normalizado)) {
+      const categoria = elegiveis.find(
+        (c) => normalizar(c.nome) === normalizar(nome),
+      );
+      if (categoria) return categoria;
+    }
+  }
+
+  for (const c of elegiveis) {
+    const nome = normalizar(c.nome);
+    if (normalizado.includes(nome) || nome.includes(normalizado)) {
+      return c;
+    }
+  }
+
+  return null;
 }
 
 const DIAS_SEMANA_NOME: Record<string, number> = {
@@ -286,21 +315,10 @@ export function interpretarMensagem(
   texto = texto.replace(valor[1], " ");
 
   // Categoria: palavra-chave ou nome direto da categoria
-  let categoriaNome: string | null = null;
-  for (const [regex, nome] of PALAVRAS_CATEGORIA) {
-    if (regex.test(texto)) {
-      categoriaNome = nome;
-      break;
-    }
-  }
-  if (!categoriaNome) {
-    for (const c of categorias) {
-      if (c.tipo === tipo && texto.includes(normalizar(c.nome))) {
-        categoriaNome = c.nome;
-        break;
-      }
-    }
-  }
+  let categoriaNome: string | null = encontrarCategoriaPorTexto(
+    texto,
+    categorias,
+  )?.nome ?? null;
   // Se a palavra-chave indicou categoria de receita, ajusta o tipo
   if (categoriaNome) {
     const cat = categorias.find(

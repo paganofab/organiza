@@ -1,5 +1,6 @@
 // Teste manual do parser: npx esbuild scripts/testar-parser.ts --bundle --format=esm | node --input-type=module
 import {
+  encontrarCategoriaPorTexto,
   interpretarCorrecao,
   interpretarLembrete,
   interpretarMensagem,
@@ -10,6 +11,7 @@ const categorias = [
   { nome: "Energia", tipo: "despesa" },
   { nome: "Internet/Telefone", tipo: "despesa" },
   { nome: "Cartão de Crédito", tipo: "despesa" },
+  { nome: "Alimentação", tipo: "despesa" },
   { nome: "Transporte", tipo: "despesa" },
   { nome: "Saúde", tipo: "despesa" },
   { nome: "Lazer", tipo: "despesa" },
@@ -30,6 +32,8 @@ const casos = [
   "ipva 3x dia 9 412 reais",
   "receita freela site 30/06 2000",
   "salario dia 5 5500",
+  "mercado 180 hoje",
+  "ifood amanha 55 reais",
   "academia 89,90",
   "presente aniversario mae 18 de julho 150 reais",
   "luz 189,90 dia 20 // medidor trocado, leitura manual",
@@ -52,6 +56,20 @@ for (const caso of casos) {
   } else {
     console.log(`ERRO "${caso}"\n     -> ${r.erro}`);
   }
+}
+
+console.log("\n--- categorias por texto ---");
+const casosCategoria = [
+  "comida",
+  "delivery",
+  "restaurante",
+  "mercado",
+  "cartao nubank",
+  "algo sem categoria",
+];
+for (const caso of casosCategoria) {
+  const c = encontrarCategoriaPorTexto(caso, categorias, "despesa");
+  console.log(`"${caso}" -> ${c?.nome ?? "sem categoria"}`);
 }
 
 console.log("\n--- ano de datas passadas (hoje = 2026-06-16) ---");

@@ -36,7 +36,7 @@
   - `conta de água 12 dezembro 250 reais`
   - `recebi 5500 salário dia 5`
   - `lembrar de ligar pro médico amanhã às 9h`
-  - Faça perguntas: `saldo`, `quanto gastei`, `próximos vencimentos`, `atrasadas`, `lembretes`
+  - Faça perguntas: `saldo`, `quanto gastei`, `quanto gastei em comida`, `próximos vencimentos`, `atrasadas`, `lembretes`
   - Botões para definir categoria, marcar como pago/concluído ou excluir
   - **Resumo diário** opcional toda manhã com o que vence no dia + atrasadas
 - **💾 Backup e restauração** — backups automáticos diários (mantém os 10 mais recentes) e exportação/importação manual.
