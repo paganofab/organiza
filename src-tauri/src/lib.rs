@@ -504,6 +504,59 @@ fn migrations() -> Vec<Migration> {
             CREATE INDEX IF NOT EXISTS idx_lembretes_membro ON lembretes (membro_id);
         "#,
         },
+        Migration {
+            version: 8,
+            description: "cartoes_credito",
+            kind: MigrationKind::Up,
+            sql: r#"
+            CREATE TABLE IF NOT EXISTS cartoes_credito (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome TEXT NOT NULL UNIQUE,
+                emissor TEXT,
+                cor TEXT NOT NULL DEFAULT '#4f46e5',
+                icone TEXT NOT NULL DEFAULT 'credit-card',
+                membro_id INTEGER REFERENCES membros(id) ON DELETE SET NULL,
+                dia_fechamento INTEGER NOT NULL DEFAULT 1 CHECK (dia_fechamento BETWEEN 1 AND 31),
+                dia_vencimento INTEGER NOT NULL DEFAULT 10 CHECK (dia_vencimento BETWEEN 1 AND 31),
+                cashback_percentual_bps INTEGER NOT NULL DEFAULT 0,
+                cashback_aplica_na_fatura INTEGER NOT NULL DEFAULT 1,
+                ativo INTEGER NOT NULL DEFAULT 1,
+                criado_em TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS cartao_lancamentos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cartao_id INTEGER NOT NULL REFERENCES cartoes_credito(id) ON DELETE CASCADE,
+                descricao TEXT NOT NULL,
+                categoria_id INTEGER REFERENCES categorias(id) ON DELETE SET NULL,
+                membro_id INTEGER REFERENCES membros(id) ON DELETE SET NULL,
+                valor_centavos INTEGER NOT NULL,
+                data_compra TEXT NOT NULL,
+                observacoes TEXT,
+                parcela_num INTEGER,
+                parcela_total INTEGER,
+                serie_id TEXT,
+                cashback_elegivel INTEGER NOT NULL DEFAULT 1,
+                criado_em TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS cartao_faturas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cartao_id INTEGER NOT NULL REFERENCES cartoes_credito(id) ON DELETE CASCADE,
+                ano_mes TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pendente',
+                data_pagamento TEXT,
+                observacoes TEXT,
+                UNIQUE (cartao_id, ano_mes)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_cartoes_membro ON cartoes_credito (membro_id);
+            CREATE INDEX IF NOT EXISTS idx_cartao_lancamentos_cartao ON cartao_lancamentos (cartao_id);
+            CREATE INDEX IF NOT EXISTS idx_cartao_lancamentos_data ON cartao_lancamentos (data_compra);
+            CREATE INDEX IF NOT EXISTS idx_cartao_lancamentos_membro ON cartao_lancamentos (membro_id);
+            CREATE INDEX IF NOT EXISTS idx_cartao_faturas_status ON cartao_faturas (status);
+        "#,
+        },
     ]
 }
 

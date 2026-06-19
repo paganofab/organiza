@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   CalendarDays,
   ChartColumnBig,
+  CreditCard,
   LayoutDashboard,
   ListChecks,
   Moon,
@@ -13,7 +14,12 @@ import {
   Wallet,
 } from "lucide-react";
 import { backupAutomaticoSeNecessario } from "./lib/backup";
-import { contasPendentesAte, obterConfig, salvarConfig } from "./lib/db";
+import {
+  contasPendentesAte,
+  listarFaturasCartao,
+  obterConfig,
+  salvarConfig,
+} from "./lib/db";
 import { EVENTO_ATUALIZAR } from "./lib/eventos";
 import { hojeISO } from "./lib/format";
 import { aplicarManterAcordadoSalvo } from "./lib/power";
@@ -23,6 +29,7 @@ import { iniciarTelegram } from "./lib/telegram";
 const LINKS = [
   { para: "/", rotulo: "Dashboard", Icone: LayoutDashboard },
   { para: "/contas", rotulo: "Contas", Icone: Wallet },
+  { para: "/cartoes", rotulo: "Cartões", Icone: CreditCard },
   { para: "/calendario", rotulo: "Calendário", Icone: CalendarDays },
   { para: "/lembretes", rotulo: "Lembretes", Icone: ListChecks },
   { para: "/relatorios", rotulo: "Relatórios", Icone: ChartColumnBig },
@@ -40,8 +47,16 @@ export default function App() {
     const ontem = new Date(`${hojeISO()}T00:00:00`);
     ontem.setDate(ontem.getDate() - 1);
     const ontemISO = `${ontem.getFullYear()}-${String(ontem.getMonth() + 1).padStart(2, "0")}-${String(ontem.getDate()).padStart(2, "0")}`;
-    contasPendentesAte(ontemISO)
-      .then((c) => setAtrasadas(c.length))
+    Promise.all([contasPendentesAte(ontemISO), listarFaturasCartao()])
+      .then(([c, f]) =>
+        setAtrasadas(
+          c.length +
+            f.filter(
+              (fatura) =>
+                fatura.status === "pendente" && fatura.vencimento <= ontemISO,
+            ).length,
+        ),
+      )
       .catch(console.error);
   }, []);
 

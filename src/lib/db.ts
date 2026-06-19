@@ -1,11 +1,17 @@
 import Database from "@tauri-apps/plugin-sql";
 import type {
+  CartaoCredito,
   Categoria,
   Conta,
   Evento,
+  FaturaCartao,
+  LancamentoCartao,
   Lembrete,
   Membro,
+  NovoCartaoCredito,
   NovaConta,
+  NovoLancamentoCartao,
+  PagamentoFaturaCartao,
   SmtpConfig,
 } from "./types";
 import { somarMeses } from "./format";
@@ -32,6 +38,121 @@ export function getDb(): Promise<Database> {
     });
   }
   return dbPromise;
+}
+
+export function somarMesAno(anoMes: string, meses: number): string {
+  return somarMeses(`${anoMes}-01`, meses).slice(0, 7);
+}
+
+export function dataNoMes(anoMes: string, dia: number): string {
+  const [ano, mes] = anoMes.split("-").map(Number);
+  const ultimoDia = new Date(ano, mes, 0).getDate();
+  const diaSeguro = Math.min(Math.max(dia, 1), ultimoDia);
+  return `${anoMes}-${String(diaSeguro).padStart(2, "0")}`;
+}
+
+export function mesFaturaCartao(
+  dataCompra: string,
+  diaFechamento: number,
+  diaVencimento: number,
+): string {
+  const anoMesCompra = dataCompra.slice(0, 7);
+  const diaCompra = Number(dataCompra.slice(8, 10));
+  const vencimentoNoMesmoMes = diaVencimento > diaFechamento;
+
+  if (vencimentoNoMesmoMes) {
+    return diaCompra <= diaFechamento
+      ? anoMesCompra
+      : somarMesAno(anoMesCompra, 1);
+  }
+
+  return diaCompra <= diaFechamento
+    ? somarMesAno(anoMesCompra, 1)
+    : somarMesAno(anoMesCompra, 2);
+}
+
+export function vencimentoFaturaCartao(
+  anoMesFatura: string,
+  diaVencimento: number,
+): string {
+  return dataNoMes(anoMesFatura, diaVencimento);
+}
+
+export function fechamentoFaturaCartao(
+  anoMesFatura: string,
+  diaFechamento: number,
+  diaVencimento: number,
+): string {
+  const mesFechamento =
+    diaVencimento > diaFechamento
+      ? anoMesFatura
+      : somarMesAno(anoMesFatura, -1);
+  return dataNoMes(mesFechamento, diaFechamento);
+}
+
+export function calcularFaturasCartao(
+  cartoes: CartaoCredito[],
+  lancamentos: LancamentoCartao[],
+  pagamentos: PagamentoFaturaCartao[] = [],
+): FaturaCartao[] {
+  const cartaoPorId = new Map(cartoes.map((c) => [c.id, c]));
+  const pagamentoPorChave = new Map(
+    pagamentos.map((p) => [`${p.cartao_id}:${p.ano_mes}`, p]),
+  );
+  const faturas = new Map<string, FaturaCartao>();
+
+  for (const lancamento of lancamentos) {
+    const cartao = cartaoPorId.get(lancamento.cartao_id);
+    if (!cartao) continue;
+
+    const anoMes = mesFaturaCartao(
+      lancamento.data_compra,
+      cartao.dia_fechamento,
+      cartao.dia_vencimento,
+    );
+    const chave = `${cartao.id}:${anoMes}`;
+    const pagamento = pagamentoPorChave.get(chave);
+    const atual =
+      faturas.get(chave) ??
+      ({
+        cartao_id: cartao.id,
+        cartao_nome: cartao.nome,
+        cartao_cor: cartao.cor,
+        cartao_membro_id: cartao.membro_id,
+        ano_mes: anoMes,
+        fechamento: fechamentoFaturaCartao(
+          anoMes,
+          cartao.dia_fechamento,
+          cartao.dia_vencimento,
+        ),
+        vencimento: vencimentoFaturaCartao(anoMes, cartao.dia_vencimento),
+        status: pagamento?.status ?? "pendente",
+        data_pagamento: pagamento?.data_pagamento ?? null,
+        valor_bruto_centavos: 0,
+        cashback_centavos: 0,
+        valor_liquido_centavos: 0,
+        qtd_lancamentos: 0,
+        cashback_aplica_na_fatura: cartao.cashback_aplica_na_fatura,
+      } satisfies FaturaCartao);
+
+    atual.valor_bruto_centavos += lancamento.valor_centavos;
+    atual.qtd_lancamentos += 1;
+    if (lancamento.cashback_elegivel === 1 && cartao.cashback_percentual_bps > 0) {
+      atual.cashback_centavos += Math.round(
+        (lancamento.valor_centavos * cartao.cashback_percentual_bps) / 10000,
+      );
+    }
+    atual.valor_liquido_centavos =
+      atual.valor_bruto_centavos -
+      (cartao.cashback_aplica_na_fatura === 1 ? atual.cashback_centavos : 0);
+    faturas.set(chave, atual);
+  }
+
+  return [...faturas.values()].sort((a, b) =>
+    a.vencimento === b.vencimento
+      ? a.cartao_nome.localeCompare(b.cartao_nome)
+      : a.vencimento.localeCompare(b.vencimento),
+  );
 }
 
 // ---------- Categorias ----------
@@ -103,6 +224,236 @@ export async function atualizarMembro(
   await d.execute(
     "UPDATE membros SET nome = $1, cor = $2, ativo = $3 WHERE id = $4",
     [campos.nome, campos.cor, campos.ativo ? 1 : 0, id],
+  );
+}
+
+// ---------- Cartões de crédito ----------
+
+export async function listarCartoesCredito(
+  incluirInativos = false,
+): Promise<CartaoCredito[]> {
+  const d = await getDb();
+  return d.select<CartaoCredito[]>(
+    `SELECT * FROM cartoes_credito ${incluirInativos ? "" : "WHERE ativo = 1"} ORDER BY ativo DESC, nome`,
+  );
+}
+
+export async function criarCartaoCredito(campos: NovoCartaoCredito) {
+  const d = await getDb();
+  await d.execute(
+    `INSERT INTO cartoes_credito
+      (nome, emissor, cor, icone, membro_id, dia_fechamento, dia_vencimento, cashback_percentual_bps, cashback_aplica_na_fatura, ativo)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+    [
+      campos.nome,
+      campos.emissor,
+      campos.cor,
+      campos.icone,
+      campos.membro_id,
+      campos.dia_fechamento,
+      campos.dia_vencimento,
+      campos.cashback_percentual_bps,
+      campos.cashback_aplica_na_fatura ? 1 : 0,
+      campos.ativo ? 1 : 0,
+    ],
+  );
+}
+
+export async function atualizarCartaoCredito(
+  id: number,
+  campos: NovoCartaoCredito,
+) {
+  const d = await getDb();
+  await d.execute(
+    `UPDATE cartoes_credito
+     SET nome = $1, emissor = $2, cor = $3, icone = $4, membro_id = $5,
+         dia_fechamento = $6, dia_vencimento = $7,
+         cashback_percentual_bps = $8, cashback_aplica_na_fatura = $9,
+         ativo = $10
+     WHERE id = $11`,
+    [
+      campos.nome,
+      campos.emissor,
+      campos.cor,
+      campos.icone,
+      campos.membro_id,
+      campos.dia_fechamento,
+      campos.dia_vencimento,
+      campos.cashback_percentual_bps,
+      campos.cashback_aplica_na_fatura ? 1 : 0,
+      campos.ativo ? 1 : 0,
+      id,
+    ],
+  );
+}
+
+export async function listarLancamentosCartao(filtro?: {
+  cartaoId?: number;
+  inicio?: string;
+  fim?: string;
+  categoriaId?: number;
+  membroId?: number;
+  familia?: boolean;
+}): Promise<LancamentoCartao[]> {
+  const d = await getDb();
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+
+  if (filtro?.cartaoId) {
+    params.push(filtro.cartaoId);
+    clauses.push(`cartao_id = $${params.length}`);
+  }
+  if (filtro?.inicio) {
+    params.push(filtro.inicio);
+    clauses.push(`data_compra >= $${params.length}`);
+  }
+  if (filtro?.fim) {
+    params.push(filtro.fim);
+    clauses.push(`data_compra <= $${params.length}`);
+  }
+  if (filtro?.categoriaId) {
+    params.push(filtro.categoriaId);
+    clauses.push(`categoria_id = $${params.length}`);
+  }
+  if (filtro?.membroId) {
+    params.push(filtro.membroId);
+    clauses.push(`membro_id = $${params.length}`);
+  }
+  if (filtro?.familia) {
+    clauses.push("membro_id IS NULL");
+  }
+
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  return d.select<LancamentoCartao[]>(
+    `SELECT * FROM cartao_lancamentos ${where} ORDER BY data_compra DESC, id DESC`,
+    params,
+  );
+}
+
+export async function criarLancamentoCartao(campos: NovoLancamentoCartao) {
+  const d = await getDb();
+  const base =
+    `INSERT INTO cartao_lancamentos
+      (cartao_id, descricao, categoria_id, membro_id, valor_centavos, data_compra, observacoes, parcela_num, parcela_total, serie_id, cashback_elegivel)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`;
+
+  const totalParcelas = Math.max(campos.parcela_total, 1);
+  if (totalParcelas > 1) {
+    const serie = crypto.randomUUID();
+    for (let i = 0; i < totalParcelas; i++) {
+      await d.execute(base, [
+        campos.cartao_id,
+        `${campos.descricao} (${i + 1}/${totalParcelas})`,
+        campos.categoria_id,
+        campos.membro_id,
+        campos.valor_centavos,
+        somarMeses(campos.data_compra, i),
+        campos.observacoes,
+        i + 1,
+        totalParcelas,
+        serie,
+        campos.cashback_elegivel ? 1 : 0,
+      ]);
+    }
+  } else {
+    await d.execute(base, [
+      campos.cartao_id,
+      campos.descricao,
+      campos.categoria_id,
+      campos.membro_id,
+      campos.valor_centavos,
+      campos.data_compra,
+      campos.observacoes,
+      null,
+      null,
+      null,
+      campos.cashback_elegivel ? 1 : 0,
+    ]);
+  }
+}
+
+export async function atualizarLancamentoCartao(
+  id: number,
+  campos: Omit<NovoLancamentoCartao, "parcela_total">,
+) {
+  const d = await getDb();
+  await d.execute(
+    `UPDATE cartao_lancamentos
+     SET cartao_id = $1, descricao = $2, categoria_id = $3, membro_id = $4,
+         valor_centavos = $5, data_compra = $6, observacoes = $7,
+         cashback_elegivel = $8
+     WHERE id = $9`,
+    [
+      campos.cartao_id,
+      campos.descricao,
+      campos.categoria_id,
+      campos.membro_id,
+      campos.valor_centavos,
+      campos.data_compra,
+      campos.observacoes,
+      campos.cashback_elegivel ? 1 : 0,
+      id,
+    ],
+  );
+}
+
+export async function excluirLancamentoCartao(id: number) {
+  const d = await getDb();
+  await d.execute("DELETE FROM cartao_lancamentos WHERE id = $1", [id]);
+}
+
+export async function listarPagamentosFaturaCartao(): Promise<
+  PagamentoFaturaCartao[]
+> {
+  const d = await getDb();
+  return d.select<PagamentoFaturaCartao[]>(
+    "SELECT * FROM cartao_faturas ORDER BY ano_mes, cartao_id",
+  );
+}
+
+export async function listarFaturasCartao(
+  inicioAnoMes?: string,
+  fimAnoMes?: string,
+): Promise<FaturaCartao[]> {
+  const [cartoes, lancamentos, pagamentos] = await Promise.all([
+    listarCartoesCredito(true),
+    listarLancamentosCartao(),
+    listarPagamentosFaturaCartao(),
+  ]);
+
+  return calcularFaturasCartao(cartoes, lancamentos, pagamentos).filter((f) => {
+    if (inicioAnoMes && f.ano_mes < inicioAnoMes) return false;
+    if (fimAnoMes && f.ano_mes > fimAnoMes) return false;
+    return true;
+  });
+}
+
+export async function marcarFaturaCartaoPaga(
+  cartaoId: number,
+  anoMes: string,
+  dataPagamento: string,
+) {
+  const d = await getDb();
+  await d.execute(
+    `INSERT INTO cartao_faturas (cartao_id, ano_mes, status, data_pagamento)
+     VALUES ($1, $2, 'paga', $3)
+     ON CONFLICT(cartao_id, ano_mes)
+     DO UPDATE SET status = 'paga', data_pagamento = $3`,
+    [cartaoId, anoMes, dataPagamento],
+  );
+}
+
+export async function marcarFaturaCartaoPendente(
+  cartaoId: number,
+  anoMes: string,
+) {
+  const d = await getDb();
+  await d.execute(
+    `INSERT INTO cartao_faturas (cartao_id, ano_mes, status, data_pagamento)
+     VALUES ($1, $2, 'pendente', NULL)
+     ON CONFLICT(cartao_id, ano_mes)
+     DO UPDATE SET status = 'pendente', data_pagamento = NULL`,
+    [cartaoId, anoMes],
   );
 }
 

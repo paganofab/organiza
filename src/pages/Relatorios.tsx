@@ -21,7 +21,13 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { contasEntre, listarCategorias, listarMembros } from "../lib/db";
+import {
+  contasEntre,
+  listarCartoesCredito,
+  listarCategorias,
+  listarLancamentosCartao,
+  listarMembros,
+} from "../lib/db";
 import { exportarCsv } from "../lib/csv";
 import {
   MESES,
@@ -31,7 +37,13 @@ import {
   nomeMesAno,
   somarMeses,
 } from "../lib/format";
-import type { Categoria, Conta, Membro } from "../lib/types";
+import type {
+  CartaoCredito,
+  Categoria,
+  Conta,
+  LancamentoCartao,
+  Membro,
+} from "../lib/types";
 
 type Periodo = 3 | 6 | 12;
 
@@ -40,6 +52,10 @@ export default function Relatorios() {
   const anoMesAtual = hoje.slice(0, 7);
   const [periodo, setPeriodo] = useState<Periodo>(6);
   const [contas, setContas] = useState<Conta[]>([]);
+  const [cartoes, setCartoes] = useState<CartaoCredito[]>([]);
+  const [lancamentosCartao, setLancamentosCartao] = useState<LancamentoCartao[]>(
+    [],
+  );
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [membros, setMembros] = useState<Membro[]>([]);
   const [filtroMembro, setFiltroMembro] = useState("");
@@ -53,12 +69,16 @@ export default function Relatorios() {
 
   const carregar = useCallback(async () => {
     const fim = `${anoMesAtual}-31`;
-    const [cs, cats, mems] = await Promise.all([
+    const [cs, cards, charges, cats, mems] = await Promise.all([
       contasEntre(inicioPeriodo, fim),
+      listarCartoesCredito(true),
+      listarLancamentosCartao({ inicio: inicioPeriodo, fim }),
       listarCategorias(),
       listarMembros(true),
     ]);
     setContas(cs);
+    setCartoes(cards);
+    setLancamentosCartao(charges);
     setCategorias(cats);
     setMembros(mems);
   }, [inicioPeriodo, anoMesAtual]);
@@ -75,6 +95,10 @@ export default function Relatorios() {
     () => new Map(membros.map((m) => [m.id, m])),
     [membros],
   );
+  const cartaoPorId = useMemo(
+    () => new Map(cartoes.map((c) => [c.id, c])),
+    [cartoes],
+  );
 
   const contasFiltradas = useMemo(() => {
     return contas.filter((c) => {
@@ -83,6 +107,14 @@ export default function Relatorios() {
       return true;
     });
   }, [contas, filtroMembro]);
+
+  const lancamentosCartaoFiltrados = useMemo(() => {
+    return lancamentosCartao.filter((l) => {
+      if (filtroMembro === "familia") return l.membro_id === null;
+      if (filtroMembro) return l.membro_id === Number(filtroMembro);
+      return true;
+    });
+  }, [lancamentosCartao, filtroMembro]);
 
   const mesesDoPeriodo = useMemo(() => {
     const lista: string[] = [];
@@ -97,11 +129,17 @@ export default function Relatorios() {
     return mesesDoPeriodo.map((am) => {
       const doMes = contasFiltradas.filter((c) => c.vencimento.startsWith(am));
       const despesas = doMes.filter((c) => c.tipo === "despesa");
+      const comprasCartao = lancamentosCartaoFiltrados.filter((l) =>
+        l.data_compra.startsWith(am),
+      );
       const [, m] = am.split("-").map(Number);
+      const totalDespesas =
+        despesas.reduce((t, c) => t + c.valor_centavos, 0) +
+        comprasCartao.reduce((t, l) => t + l.valor_centavos, 0);
       return {
         mes: MESES[m - 1].slice(0, 3),
         anoMes: am,
-        total: despesas.reduce((t, c) => t + c.valor_centavos, 0) / 100,
+        total: totalDespesas / 100,
         pago:
           despesas
             .filter((c) => c.status === "paga")
@@ -112,7 +150,7 @@ export default function Relatorios() {
             .reduce((t, c) => t + c.valor_centavos, 0) / 100,
       };
     });
-  }, [contasFiltradas, mesesDoPeriodo]);
+  }, [contasFiltradas, lancamentosCartaoFiltrados, mesesDoPeriodo]);
 
   // Gastos por categoria no mês selecionado (apenas despesas)
   const contasDoMes = useMemo(
@@ -123,10 +161,18 @@ export default function Relatorios() {
     [contasFiltradas, mesSelecionado],
   );
 
+  const comprasCartaoDoMes = useMemo(
+    () =>
+      lancamentosCartaoFiltrados.filter((l) =>
+        l.data_compra.startsWith(mesSelecionado),
+      ),
+    [lancamentosCartaoFiltrados, mesSelecionado],
+  );
+
   const porCategoria = useMemo(() => {
     const mapa = new Map<string, { nome: string; cor: string; valor: number; qtd: number }>();
-    for (const c of contasDoMes) {
-      const cat = c.categoria_id ? catPorId.get(c.categoria_id) : undefined;
+    const acumular = (categoriaId: number | null, valor: number) => {
+      const cat = categoriaId ? catPorId.get(categoriaId) : undefined;
       const chave = cat?.nome ?? "Sem categoria";
       const atual = mapa.get(chave) ?? {
         nome: chave,
@@ -134,20 +180,27 @@ export default function Relatorios() {
         valor: 0,
         qtd: 0,
       };
-      atual.valor += c.valor_centavos;
+      atual.valor += valor;
       atual.qtd += 1;
       mapa.set(chave, atual);
+    };
+    for (const c of contasDoMes) {
+      acumular(c.categoria_id, c.valor_centavos);
+    }
+    for (const l of comprasCartaoDoMes) {
+      acumular(l.categoria_id, l.valor_centavos);
     }
     return [...mapa.values()].sort((a, b) => b.valor - a.valor);
-  }, [contasDoMes, catPorId]);
+  }, [contasDoMes, comprasCartaoDoMes, catPorId]);
 
   const totalMes = porCategoria.reduce((t, c) => t + c.valor, 0);
 
   async function exportar() {
-    const linhas = contasFiltradas.map((c) => {
+    const linhasContas = contasFiltradas.map((c) => {
       const cat = c.categoria_id ? catPorId.get(c.categoria_id) : undefined;
       const membro = c.membro_id ? membroPorId.get(c.membro_id) : null;
       return [
+        "Conta",
         c.descricao,
         c.tipo === "receita" ? "Receita" : "Despesa",
         cat?.nome ?? "Sem categoria",
@@ -166,9 +219,28 @@ export default function Relatorios() {
         c.observacoes ?? "",
       ];
     });
+    const linhasCartao = lancamentosCartaoFiltrados.map((l) => {
+      const cat = l.categoria_id ? catPorId.get(l.categoria_id) : undefined;
+      const membro = l.membro_id ? membroPorId.get(l.membro_id) : null;
+      const cartao = cartaoPorId.get(l.cartao_id);
+      return [
+        "Cartão",
+        l.descricao,
+        "Despesa",
+        cat?.nome ?? "Sem categoria",
+        membro?.nome ?? "Família inteira",
+        formatarData(l.data_compra),
+        (l.valor_centavos / 100).toFixed(2).replace(".", ","),
+        cartao ? `Compra no ${cartao.nome}` : "Compra no cartão",
+        "",
+        l.parcela_num ? `${l.parcela_num}/${l.parcela_total}` : "",
+        l.observacoes ?? "",
+      ];
+    });
     const ok = await exportarCsv(
       `organiza-contas-${inicioPeriodo.slice(0, 7)}-a-${anoMesAtual}.csv`,
       [
+        "Origem",
         "Descrição",
         "Tipo",
         "Categoria",
@@ -180,7 +252,7 @@ export default function Relatorios() {
         "Parcela",
         "Observações",
       ],
-      linhas,
+      [...linhasContas, ...linhasCartao],
     );
     if (ok) {
       setExportado(true);
@@ -299,7 +371,9 @@ export default function Relatorios() {
             </select>
           </div>
           {porCategoria.length === 0 ? (
-            <div className="vazio">Sem contas em {nomeMesAno(mesSelecionado)}.</div>
+            <div className="vazio">
+              Sem lançamentos em {nomeMesAno(mesSelecionado)}.
+            </div>
           ) : (
             <>
               <ResponsiveContainer width="100%" height={240}>
@@ -322,7 +396,7 @@ export default function Relatorios() {
                 <thead>
                   <tr>
                     <th>Categoria</th>
-                    <th className="num">Contas</th>
+                    <th className="num">Lançamentos</th>
                     <th className="num">Total</th>
                     <th className="num">% do mês</th>
                   </tr>

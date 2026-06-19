@@ -2,14 +2,26 @@ import {
   contasEntre,
   listarCategorias,
   listarContas,
+  listarFaturasCartao,
+  listarLancamentosCartao,
   listarLembretes,
 } from "./db";
 import { diffDias, formatarData, formatarMoeda, hojeISO } from "./format";
 import { encontrarCategoriaPorTexto, normalizar } from "./parser";
-import { estaAtrasada, type Categoria, type Conta, type Lembrete } from "./types";
+import {
+  estaAtrasada,
+  type Categoria,
+  type Conta,
+  type LancamentoCartao,
+  type Lembrete,
+} from "./types";
 
 function soma(contas: Conta[]): number {
   return contas.reduce((t, c) => t + c.valor_centavos, 0);
+}
+
+function somaLancamentos(lancamentos: LancamentoCartao[]): number {
+  return lancamentos.reduce((t, l) => t + l.valor_centavos, 0);
 }
 
 function extrairTermoCategoriaGastos(texto: string): string | null {
@@ -55,13 +67,19 @@ function categoriaConsultaGastos(
 /** Saldo do mês atual: receitas − despesas, com detalhamento. */
 export async function respostaSaldo(): Promise<string> {
   const anoMes = hojeISO().slice(0, 7);
-  const contas = await listarContas({ anoMes });
+  const [contas, faturas] = await Promise.all([
+    listarContas({ anoMes }),
+    listarFaturasCartao(anoMes, anoMes),
+  ]);
   const receitas = soma(contas.filter((c) => c.tipo === "receita"));
-  const despesas = soma(contas.filter((c) => c.tipo === "despesa"));
+  const totalFaturas = faturas.reduce((t, f) => t + f.valor_liquido_centavos, 0);
+  const despesas = soma(contas.filter((c) => c.tipo === "despesa")) + totalFaturas;
   const saldo = receitas - despesas;
-  const pago = soma(
-    contas.filter((c) => c.tipo === "despesa" && c.status === "paga"),
-  );
+  const pago =
+    soma(contas.filter((c) => c.tipo === "despesa" && c.status === "paga")) +
+    faturas
+      .filter((f) => f.status === "paga")
+      .reduce((t, f) => t + f.valor_liquido_centavos, 0);
   return [
     `💰 Saldo do mês: ${formatarMoeda(saldo)}`,
     `Receitas: ${formatarMoeda(receitas)}`,
@@ -72,11 +90,17 @@ export async function respostaSaldo(): Promise<string> {
 /** Quanto já foi gasto no mês, opcionalmente filtrando por categoria. */
 export async function respostaGastos(textoConsulta?: string): Promise<string> {
   const anoMes = hojeISO().slice(0, 7);
-  const [contas, categorias] = await Promise.all([
+  const [contas, comprasCartao, categorias] = await Promise.all([
     listarContas({ anoMes, tipo: "despesa" }),
+    listarLancamentosCartao({
+      inicio: `${anoMes}-01`,
+      fim: `${anoMes}-31`,
+    }),
     listarCategorias(),
   ]);
-  if (!contas.length) return "Nenhuma despesa lançada neste mês.";
+  if (!contas.length && !comprasCartao.length) {
+    return "Nenhuma despesa lançada neste mês.";
+  }
 
   const filtro = textoConsulta
     ? categoriaConsultaGastos(textoConsulta, categorias)
@@ -94,16 +118,30 @@ export async function respostaGastos(textoConsulta?: string): Promise<string> {
     const filtradas = contas.filter(
       (c) => c.categoria_id === filtro.categoria!.id,
     );
-    if (!filtradas.length) {
+    const comprasFiltradas = comprasCartao.filter(
+      (l) => l.categoria_id === filtro.categoria!.id,
+    );
+    if (!filtradas.length && !comprasFiltradas.length) {
       return `Nenhuma despesa em ${filtro.categoria.nome} lançada neste mês.`;
     }
 
-    const maiores = [...filtradas]
+    const maiores = [
+      ...filtradas.map((c) => ({
+        descricao: c.descricao,
+        valor_centavos: c.valor_centavos,
+      })),
+      ...comprasFiltradas.map((l) => ({
+        descricao: `${l.descricao} (cartão)`,
+        valor_centavos: l.valor_centavos,
+      })),
+    ]
       .sort((a, b) => b.valor_centavos - a.valor_centavos)
       .slice(0, 5);
     return [
-      `💸 ${filtro.categoria.nome} neste mês: ${formatarMoeda(soma(filtradas))}`,
-      `${filtradas.length} lançamento(s).`,
+      `💸 ${filtro.categoria.nome} neste mês: ${formatarMoeda(
+        soma(filtradas) + somaLancamentos(comprasFiltradas),
+      )}`,
+      `${filtradas.length + comprasFiltradas.length} lançamento(s).`,
       "Maiores lançamentos:",
       ...maiores.map((c) => `• ${c.descricao}: ${formatarMoeda(c.valor_centavos)}`),
     ].join("\n");
@@ -115,9 +153,13 @@ export async function respostaGastos(textoConsulta?: string): Promise<string> {
     const nome = c.categoria_id ? catNome.get(c.categoria_id) ?? "Outros" : "Sem categoria";
     porCat.set(nome, (porCat.get(nome) ?? 0) + c.valor_centavos);
   }
+  for (const l of comprasCartao) {
+    const nome = l.categoria_id ? catNome.get(l.categoria_id) ?? "Outros" : "Sem categoria";
+    porCat.set(nome, (porCat.get(nome) ?? 0) + l.valor_centavos);
+  }
   const top = [...porCat.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
   return [
-    `💸 Despesas do mês: ${formatarMoeda(soma(contas))}`,
+    `💸 Despesas do mês: ${formatarMoeda(soma(contas) + somaLancamentos(comprasCartao))}`,
     "Maiores categorias:",
     ...top.map(([nome, v]) => `• ${nome}: ${formatarMoeda(v)}`),
   ].join("\n");
@@ -130,36 +172,71 @@ export async function respostaProximos(): Promise<string> {
   fim.setDate(fim.getDate() + 14);
   const fimISO = `${fim.getFullYear()}-${String(fim.getMonth() + 1).padStart(2, "0")}-${String(fim.getDate()).padStart(2, "0")}`;
 
-  const contas = (await contasEntre(hoje, fimISO)).filter(
+  const [contasRaw, faturasRaw] = await Promise.all([
+    contasEntre(hoje, fimISO),
+    listarFaturasCartao(hoje.slice(0, 7), fimISO.slice(0, 7)),
+  ]);
+  const contas = contasRaw.filter(
     (c) => c.tipo === "despesa" && c.status === "pendente",
   );
-  if (!contas.length) return "🎉 Nada vencendo nos próximos 14 dias.";
+  const faturas = faturasRaw.filter(
+    (f) =>
+      f.status === "pendente" &&
+      f.vencimento >= hoje &&
+      f.vencimento <= fimISO,
+  );
+  if (!contas.length && !faturas.length) {
+    return "🎉 Nada vencendo nos próximos 14 dias.";
+  }
 
-  const linhas = contas.map((c) => {
+  const linhasContas = contas.map((c) => {
     const dias = diffDias(hoje, c.vencimento);
     const quando = dias === 0 ? "hoje" : `em ${dias}d`;
     return `• ${c.descricao} — ${formatarMoeda(c.valor_centavos)} (${quando})`;
   });
+  const linhasFaturas = faturas.map((f) => {
+    const dias = diffDias(hoje, f.vencimento);
+    const quando = dias === 0 ? "hoje" : `em ${dias}d`;
+    return `• Fatura ${f.cartao_nome} — ${formatarMoeda(f.valor_liquido_centavos)} (${quando})`;
+  });
   return [
-    `⏰ Próximos vencimentos (${formatarMoeda(soma(contas))}):`,
-    ...linhas,
+    `⏰ Próximos vencimentos (${formatarMoeda(
+      soma(contas) +
+        faturas.reduce((t, f) => t + f.valor_liquido_centavos, 0),
+    )}):`,
+    ...linhasContas,
+    ...linhasFaturas,
   ].join("\n");
 }
 
 /** Contas atrasadas (pendentes vencidas). */
 export async function respostaAtrasadas(): Promise<string> {
   const hoje = hojeISO();
-  const contas = (await listarContas({ status: "pendente", tipo: "despesa" }))
-    .filter((c) => estaAtrasada(c, hoje));
-  if (!contas.length) return "✅ Nenhuma conta atrasada.";
+  const [contasRaw, faturasRaw] = await Promise.all([
+    listarContas({ status: "pendente", tipo: "despesa" }),
+    listarFaturasCartao(),
+  ]);
+  const contas = contasRaw.filter((c) => estaAtrasada(c, hoje));
+  const faturas = faturasRaw.filter(
+    (f) => f.status === "pendente" && f.vencimento < hoje,
+  );
+  if (!contas.length && !faturas.length) return "✅ Nenhuma conta atrasada.";
 
   const linhas = contas.map(
     (c) =>
       `• ${c.descricao} — ${formatarMoeda(c.valor_centavos)} (venceu ${formatarData(c.vencimento)})`,
   );
+  const linhasFaturas = faturas.map(
+    (f) =>
+      `• Fatura ${f.cartao_nome} — ${formatarMoeda(f.valor_liquido_centavos)} (venceu ${formatarData(f.vencimento)})`,
+  );
   return [
-    `🔴 Atrasadas (${formatarMoeda(soma(contas))}):`,
+    `🔴 Atrasadas (${formatarMoeda(
+      soma(contas) +
+        faturas.reduce((t, f) => t + f.valor_liquido_centavos, 0),
+    )}):`,
     ...linhas,
+    ...linhasFaturas,
   ].join("\n");
 }
 
@@ -191,20 +268,35 @@ export async function respostaLembretes(): Promise<string> {
  */
 export async function resumoDiario(): Promise<string | null> {
   const hoje = hojeISO();
-  const [pendentes, doDia, lembretes] = await Promise.all([
+  const [pendentes, doDia, faturas, lembretes] = await Promise.all([
     listarContas({ status: "pendente", tipo: "despesa" }),
     listarContas({ anoMes: hoje.slice(0, 7), tipo: "despesa" }),
+    listarFaturasCartao(),
     listarLembretes(),
   ]);
   const atrasadas = pendentes.filter((c) => estaAtrasada(c, hoje));
   const hojeVencem = doDia.filter(
     (c) => c.vencimento === hoje && c.status === "pendente",
   );
+  const faturasAtrasadas = faturas.filter(
+    (f) => f.status === "pendente" && f.vencimento < hoje,
+  );
+  const faturasHoje = faturas.filter(
+    (f) => f.status === "pendente" && f.vencimento === hoje,
+  );
   const lembHoje = lembretes.filter(
     (l) => !l.concluido && l.data && l.data <= hoje,
   );
 
-  if (!atrasadas.length && !hojeVencem.length && !lembHoje.length) return null;
+  if (
+    !atrasadas.length &&
+    !hojeVencem.length &&
+    !faturasAtrasadas.length &&
+    !faturasHoje.length &&
+    !lembHoje.length
+  ) {
+    return null;
+  }
 
   const partes: string[] = ["☀️ Bom dia! Resumo do Organiza:"];
   if (hojeVencem.length) {
@@ -213,6 +305,18 @@ export async function resumoDiario(): Promise<string | null> {
       `📅 Vencem hoje (${formatarMoeda(soma(hojeVencem))}):`,
       ...hojeVencem.map(
         (c) => `• ${c.descricao} — ${formatarMoeda(c.valor_centavos)}`,
+      ),
+    );
+  }
+  if (faturasHoje.length) {
+    partes.push(
+      "",
+      `💳 Faturas vencem hoje (${formatarMoeda(
+        faturasHoje.reduce((t, f) => t + f.valor_liquido_centavos, 0),
+      )}):`,
+      ...faturasHoje.map(
+        (f) =>
+          `• ${f.cartao_nome} — ${formatarMoeda(f.valor_liquido_centavos)}`,
       ),
     );
   }
@@ -228,6 +332,23 @@ export async function resumoDiario(): Promise<string | null> {
         ),
     );
     if (atrasadas.length > 5) partes.push(`…e mais ${atrasadas.length - 5}.`);
+  }
+  if (faturasAtrasadas.length) {
+    partes.push(
+      "",
+      `💳 Faturas atrasadas (${formatarMoeda(
+        faturasAtrasadas.reduce((t, f) => t + f.valor_liquido_centavos, 0),
+      )}):`,
+      ...faturasAtrasadas
+        .slice(0, 5)
+        .map(
+          (f) =>
+            `• ${f.cartao_nome} — ${formatarMoeda(f.valor_liquido_centavos)} (${formatarData(f.vencimento)})`,
+        ),
+    );
+    if (faturasAtrasadas.length > 5) {
+      partes.push(`…e mais ${faturasAtrasadas.length - 5}.`);
+    }
   }
   if (lembHoje.length) {
     partes.push(

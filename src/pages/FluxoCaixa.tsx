@@ -13,10 +13,10 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { contasEntre, listarMembros } from "../lib/db";
+import { contasEntre, listarFaturasCartao, listarMembros } from "../lib/db";
 import { useAtualizacaoExterna } from "../lib/eventos";
 import { MESES, formatarMoeda, hojeISO, somarMeses } from "../lib/format";
-import type { Conta, Membro } from "../lib/types";
+import type { Conta, FaturaCartao, Membro } from "../lib/types";
 
 type Horizonte = 6 | 12;
 
@@ -25,6 +25,7 @@ export default function FluxoCaixa() {
   const anoMesAtual = hoje.slice(0, 7);
   const [horizonte, setHorizonte] = useState<Horizonte>(6);
   const [contas, setContas] = useState<Conta[]>([]);
+  const [faturas, setFaturas] = useState<FaturaCartao[]>([]);
   const [membros, setMembros] = useState<Membro[]>([]);
   const [filtroMembro, setFiltroMembro] = useState("");
 
@@ -34,11 +35,13 @@ export default function FluxoCaixa() {
   );
 
   const carregar = useCallback(async () => {
-    const [cs, mems] = await Promise.all([
+    const [cs, fats, mems] = await Promise.all([
       contasEntre(`${anoMesAtual}-01`, `${fim}-31`),
+      listarFaturasCartao(anoMesAtual, fim),
       listarMembros(true),
     ]);
     setContas(cs);
+    setFaturas(fats);
     setMembros(mems);
   }, [anoMesAtual, fim]);
 
@@ -64,6 +67,15 @@ export default function FluxoCaixa() {
     });
   }, [contas, filtroMembro]);
 
+  const faturasFiltradas = useMemo(() => {
+    return faturas.filter((f) => {
+      if (f.status === "paga") return false;
+      if (filtroMembro === "familia") return f.cartao_membro_id === null;
+      if (filtroMembro) return f.cartao_membro_id === Number(filtroMembro);
+      return true;
+    });
+  }, [faturas, filtroMembro]);
+
   // Projeção: por mês, despesas e receitas já lançadas + saldo acumulado
   const dados = useMemo(() => {
     let acumulado = 0;
@@ -72,20 +84,23 @@ export default function FluxoCaixa() {
       const despesas = doMes
         .filter((c) => c.tipo === "despesa")
         .reduce((t, c) => t + c.valor_centavos, 0);
+      const faturasDoMes = faturasFiltradas
+        .filter((f) => f.ano_mes === am)
+        .reduce((t, f) => t + f.valor_liquido_centavos, 0);
       const receitas = doMes
         .filter((c) => c.tipo === "receita")
         .reduce((t, c) => t + c.valor_centavos, 0);
-      acumulado += receitas - despesas;
+      acumulado += receitas - despesas - faturasDoMes;
       const [, m] = am.split("-").map(Number);
       return {
         mes: MESES[m - 1].slice(0, 3),
-        despesas: despesas / 100,
+        despesas: (despesas + faturasDoMes) / 100,
         receitas: receitas / 100,
-        saldoMes: (receitas - despesas) / 100,
+        saldoMes: (receitas - despesas - faturasDoMes) / 100,
         acumulado: acumulado / 100,
       };
     });
-  }, [contasFiltradas, meses]);
+  }, [contasFiltradas, faturasFiltradas, meses]);
 
   const totalDespesas = dados.reduce((t, d) => t + d.despesas, 0);
   const totalReceitas = dados.reduce((t, d) => t + d.receitas, 0);

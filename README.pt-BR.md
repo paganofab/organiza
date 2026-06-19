@@ -28,6 +28,7 @@
 
 - **📊 Dashboard** — visão do mês: receitas, despesas, saldo, próximos vencimentos, contas atrasadas, gráfico de gastos por categoria, progresso dos orçamentos e lembretes.
 - **💸 Contas e receitas** — CRUD completo com categorias, lançamentos **recorrentes**, **parcelamentos** (ex: 12×), status de pago/recebido, anexo de comprovantes e seletor despesa/receita.
+- **💳 Cartões de crédito** — crie cartões com responsável, fechamento/vencimento, compras, parcelas, faturas mensais, status de pagamento e cashback percentual simples.
 - **📅 Calendário** — visão mensal combinando eventos, vencimentos de contas e lembretes.
 - **🔔 Lembretes (lista de tarefas)** — tarefas com data/hora opcional, **recorrência** (diária/semanal/mensal), conclusão por checkbox e notificação do sistema ao vencer.
 - **👨‍👩‍👧‍👦 Membros da família** — crie membros e atribua contas, receitas e lembretes a uma pessoa ou à família inteira, com filtros em contas, lembretes, relatórios e fluxo de caixa.
@@ -100,7 +101,7 @@ O instalador é gerado em `src-tauri/target/release/bundle/` (ex: `.dmg` no macO
 
 ```
 src/
-  pages/        # Dashboard, Contas, Calendário, Lembretes, Relatórios, Fluxo de caixa, Configurações
+  pages/        # Dashboard, Contas, Cartões, Calendário, Lembretes, Relatórios, Fluxo de caixa, Configurações
   components/   # Modal e formulários de lançamento
   lib/          # db, parser, telegram, reminders, consultas, backup, format, types
 src-tauri/

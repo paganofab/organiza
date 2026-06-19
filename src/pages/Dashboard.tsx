@@ -5,6 +5,7 @@ import {
   ChartPie,
   CircleAlert,
   Clock,
+  CreditCard,
   ListChecks,
   Target,
   TriangleAlert,
@@ -20,7 +21,9 @@ import {
   lembretesPendentesAte,
   listarCategorias,
   listarContas,
+  listarFaturasCartao,
   listarMembros,
+  marcarFaturaCartaoPaga,
   marcarPaga,
 } from "../lib/db";
 import {
@@ -35,6 +38,7 @@ import {
   type Categoria,
   type Conta,
   type Evento,
+  type FaturaCartao,
   type Lembrete,
   type Membro,
 } from "../lib/types";
@@ -46,6 +50,11 @@ function somar(contas: Conta[]): number {
 export default function Dashboard() {
   const hoje = hojeISO();
   const anoMes = hoje.slice(0, 7);
+  const limite14 = useMemo(() => {
+    const em14dias = new Date(`${hoje}T00:00:00`);
+    em14dias.setDate(em14dias.getDate() + 14);
+    return `${em14dias.getFullYear()}-${String(em14dias.getMonth() + 1).padStart(2, "0")}-${String(em14dias.getDate()).padStart(2, "0")}`;
+  }, [hoje]);
   const [contasMes, setContasMes] = useState<Conta[]>([]);
   const [atrasadasTodas, setAtrasadasTodas] = useState<Conta[]>([]);
   const [proximas, setProximas] = useState<Conta[]>([]);
@@ -53,20 +62,18 @@ export default function Dashboard() {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [lembretes, setLembretes] = useState<Lembrete[]>([]);
   const [membros, setMembros] = useState<Membro[]>([]);
+  const [faturasCartao, setFaturasCartao] = useState<FaturaCartao[]>([]);
 
   const carregar = useCallback(async () => {
-    const em14dias = new Date(`${hoje}T00:00:00`);
-    em14dias.setDate(em14dias.getDate() + 14);
-    const limite = `${em14dias.getFullYear()}-${String(em14dias.getMonth() + 1).padStart(2, "0")}-${String(em14dias.getDate()).padStart(2, "0")}`;
-
-    const [mes, pendentes, prox, evts, cats, lembs, mems] = await Promise.all([
+    const [mes, pendentes, prox, evts, cats, lembs, mems, faturas] = await Promise.all([
       listarContas({ anoMes }),
       listarContas({ status: "pendente", tipo: "despesa" }),
-      contasEntre(hoje, limite),
-      eventosEntre(hoje, limite),
+      contasEntre(hoje, limite14),
+      eventosEntre(hoje, limite14),
       listarCategorias(),
       lembretesPendentesAte(hoje), // atrasados + de hoje
       listarMembros(true),
+      listarFaturasCartao(),
     ]);
     setContasMes(mes);
     setAtrasadasTodas(pendentes.filter((c) => estaAtrasada(c, hoje)));
@@ -77,7 +84,8 @@ export default function Dashboard() {
     setCategorias(cats);
     setLembretes(lembs);
     setMembros(mems);
-  }, [anoMes, hoje]);
+    setFaturasCartao(faturas);
+  }, [anoMes, hoje, limite14]);
 
   async function concluirLembreteDash(id: number) {
     await concluirLembrete(id, hoje);
@@ -108,11 +116,34 @@ export default function Dashboard() {
     [contasMes],
   );
 
-  const totalDespesas = somar(despesasMes);
+  const totalDespesasContas = somar(despesasMes);
+  const faturasMes = faturasCartao.filter((f) => f.ano_mes === anoMes);
+  const faturasAtrasadas = faturasCartao.filter(
+    (f) => f.status === "pendente" && f.vencimento < hoje,
+  );
+  const faturasProximas = faturasCartao.filter(
+    (f) =>
+      f.status === "pendente" &&
+      f.vencimento >= hoje &&
+      f.vencimento <= limite14,
+  );
+  const totalFaturasMes = faturasMes.reduce(
+    (t, f) => t + f.valor_liquido_centavos,
+    0,
+  );
+  const totalFaturasAtrasadas = faturasAtrasadas.reduce(
+    (t, f) => t + f.valor_liquido_centavos,
+    0,
+  );
+  const totalDespesas = totalDespesasContas + totalFaturasMes;
   const totalReceitas = somar(receitasMes);
   const saldo = totalReceitas - totalDespesas;
-  const pendenteMes = somar(despesasMes.filter((c) => c.status === "pendente"));
-  const totalAtrasado = somar(atrasadasTodas);
+  const pendenteMes =
+    somar(despesasMes.filter((c) => c.status === "pendente")) +
+    faturasMes
+      .filter((f) => f.status === "pendente")
+      .reduce((t, f) => t + f.valor_liquido_centavos, 0);
+  const totalAtrasado = somar(atrasadasTodas) + totalFaturasAtrasadas;
 
   const dadosPizza = useMemo(() => {
     const porCategoria = new Map<string, { nome: string; cor: string; valor: number }>();
@@ -144,6 +175,11 @@ export default function Dashboard() {
 
   async function pagarAgora(c: Conta) {
     await marcarPaga(c.id, hoje);
+    await carregar();
+  }
+
+  async function pagarFaturaAgora(f: FaturaCartao) {
+    await marcarFaturaCartaoPaga(f.cartao_id, f.ano_mes, hoje);
     await carregar();
   }
 
@@ -185,6 +221,47 @@ export default function Dashboard() {
     );
   }
 
+  function linhaFatura(f: FaturaCartao) {
+    const dias = diffDias(hoje, f.vencimento);
+    const quando =
+      dias < 0
+        ? `venceu há ${-dias} dia(s)`
+        : dias === 0
+          ? "vence hoje"
+          : `vence em ${dias} dia(s)`;
+    const membro = f.cartao_membro_id ? membroPorId.get(f.cartao_membro_id) : null;
+    const atrasada = f.vencimento < hoje;
+    return (
+      <div className="item-linha" key={`${f.cartao_id}-${f.ano_mes}`}>
+        <div
+          className="icone-cat"
+          style={{ background: `${f.cartao_cor}22`, color: f.cartao_cor }}
+        >
+          <CreditCard size={17} />
+        </div>
+        <div className="info">
+          <div className="titulo">Fatura {f.cartao_nome}</div>
+          <div className="detalhe">
+            {formatarData(f.vencimento)} · {quando}
+          </div>
+          <div className="detalhe">
+            <MembroBadge membro={membro} mostrarFamilia />
+          </div>
+        </div>
+        <span className={`badge ${atrasada ? "atrasada" : "pendente"}`}>
+          {atrasada ? "Atrasada" : "Pendente"}
+        </span>
+        <div className="valor-item">{formatarMoeda(f.valor_liquido_centavos)}</div>
+        <button
+          className="btn-mini btn-primario"
+          onClick={() => pagarFaturaAgora(f)}
+        >
+          Pagar
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="cabecalho-pagina">
@@ -197,10 +274,11 @@ export default function Dashboard() {
         </Link>
       </div>
 
-      {atrasadasTodas.length > 0 && (
+      {atrasadasTodas.length + faturasAtrasadas.length > 0 && (
         <div className="aviso">
-          <TriangleAlert size={16} /> Você tem {atrasadasTodas.length} conta(s)
-          atrasada(s) somando {formatarMoeda(totalAtrasado)}.
+          <TriangleAlert size={16} /> Você tem{" "}
+          {atrasadasTodas.length + faturasAtrasadas.length} vencimento(s)
+          atrasado(s) somando {formatarMoeda(totalAtrasado)}.
         </div>
       )}
 
@@ -212,6 +290,10 @@ export default function Dashboard() {
         <div className="card">
           <div className="rotulo">Despesas do mês</div>
           <div className="valor">{formatarMoeda(totalDespesas)}</div>
+        </div>
+        <div className="card">
+          <div className="rotulo">Faturas de cartão</div>
+          <div className="valor">{formatarMoeda(totalFaturasMes)}</div>
         </div>
         <div className="card">
           <div className="rotulo">Saldo do mês</div>
@@ -235,13 +317,17 @@ export default function Dashboard() {
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div className="card">
             <h2>
-              <CircleAlert size={16} color="var(--red)" /> Contas atrasadas
+              <CircleAlert size={16} color="var(--red)" /> Contas e faturas
+              atrasadas
             </h2>
             <div className="lista-itens">
-              {atrasadasTodas.length === 0 ? (
-                <div className="vazio">Nenhuma conta atrasada.</div>
+              {atrasadasTodas.length + faturasAtrasadas.length === 0 ? (
+                <div className="vazio">Nenhum vencimento atrasado.</div>
               ) : (
-                atrasadasTodas.map(linhaVencimento)
+                <>
+                  {atrasadasTodas.map(linhaVencimento)}
+                  {faturasAtrasadas.map(linhaFatura)}
+                </>
               )}
             </div>
           </div>
@@ -251,10 +337,13 @@ export default function Dashboard() {
               dias)
             </h2>
             <div className="lista-itens">
-              {proximas.length === 0 ? (
+              {proximas.length + faturasProximas.length === 0 ? (
                 <div className="vazio">Nada vencendo nos próximos 14 dias.</div>
               ) : (
-                proximas.map(linhaVencimento)
+                <>
+                  {proximas.map(linhaVencimento)}
+                  {faturasProximas.map(linhaFatura)}
+                </>
               )}
             </div>
           </div>

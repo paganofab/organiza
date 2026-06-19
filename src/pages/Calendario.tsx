@@ -2,7 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import EventoForm from "../components/EventoForm";
 import { useAtualizacaoExterna } from "../lib/eventos";
-import { contasEntre, eventosEntre, lembretesEntre, listarMembros } from "../lib/db";
+import {
+  contasEntre,
+  eventosEntre,
+  lembretesEntre,
+  listarFaturasCartao,
+  listarMembros,
+} from "../lib/db";
 import {
   DIAS_SEMANA,
   formatarMoeda,
@@ -10,7 +16,7 @@ import {
   nomeMesAno,
   somarMeses,
 } from "../lib/format";
-import type { Conta, Evento, Lembrete, Membro } from "../lib/types";
+import type { Conta, Evento, FaturaCartao, Lembrete, Membro } from "../lib/types";
 
 interface Dia {
   iso: string;
@@ -42,6 +48,7 @@ export default function Calendario() {
   const [anoMes, setAnoMes] = useState(hoje.slice(0, 7));
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [contas, setContas] = useState<Conta[]>([]);
+  const [faturas, setFaturas] = useState<FaturaCartao[]>([]);
   const [lembretes, setLembretes] = useState<Lembrete[]>([]);
   const [membros, setMembros] = useState<Membro[]>([]);
   const [formAberto, setFormAberto] = useState(false);
@@ -53,14 +60,16 @@ export default function Calendario() {
   const carregar = useCallback(async () => {
     const inicio = grade[0].iso;
     const fim = grade[grade.length - 1].iso;
-    const [evts, cts, lembs, mems] = await Promise.all([
+    const [evts, cts, fats, lembs, mems] = await Promise.all([
       eventosEntre(inicio, fim),
       contasEntre(inicio, fim),
+      listarFaturasCartao(inicio.slice(0, 7), fim.slice(0, 7)),
       lembretesEntre(inicio, fim),
       listarMembros(true),
     ]);
     setEventos(evts);
     setContas(cts);
+    setFaturas(fats);
     setLembretes(lembs);
     setMembros(mems);
   }, [grade]);
@@ -74,21 +83,27 @@ export default function Calendario() {
   const porDia = useMemo(() => {
     const mapa = new Map<
       string,
-      { eventos: Evento[]; contas: Conta[]; lembretes: Lembrete[] }
+      {
+        eventos: Evento[];
+        contas: Conta[];
+        faturas: FaturaCartao[];
+        lembretes: Lembrete[];
+      }
     >();
     const get = (iso: string) => {
       let v = mapa.get(iso);
       if (!v) {
-        v = { eventos: [], contas: [], lembretes: [] };
+        v = { eventos: [], contas: [], faturas: [], lembretes: [] };
         mapa.set(iso, v);
       }
       return v;
     };
     for (const e of eventos) get(e.data).eventos.push(e);
     for (const c of contas) get(c.vencimento).contas.push(c);
+    for (const f of faturas) get(f.vencimento).faturas.push(f);
     for (const l of lembretes) if (l.data) get(l.data).lembretes.push(l);
     return mapa;
-  }, [eventos, contas, lembretes]);
+  }, [eventos, contas, faturas, lembretes]);
 
   const membroPorId = useMemo(
     () => new Map(membros.map((m) => [m.id, m])),
@@ -185,6 +200,18 @@ export default function Calendario() {
                         : "#d97706",
                 });
               }
+              for (const f of itens?.faturas ?? []) {
+                const membro = f.cartao_membro_id ? membroPorId.get(f.cartao_membro_id) : null;
+                pilulas.push({
+                  chave: `f${f.cartao_id}-${f.ano_mes}`,
+                  texto: `${membro ? `${membro.nome} · ` : ""}Fatura ${f.cartao_nome} · ${formatarMoeda(f.valor_liquido_centavos)}`,
+                  cor: f.status === "paga"
+                    ? "#16a34a"
+                    : f.vencimento < hoje
+                      ? "#dc2626"
+                      : f.cartao_cor,
+                });
+              }
               for (const l of itens?.lembretes ?? []) {
                 const membro = l.membro_id ? membroPorId.get(l.membro_id) : null;
                 pilulas.push({
@@ -228,6 +255,7 @@ export default function Calendario() {
         <span><i style={{ background: "#dc2626" }} /> conta atrasada</span>
         <span><i style={{ background: "#16a34a" }} /> paga / recebida</span>
         <span><i style={{ background: "#0d9488" }} /> receita a receber</span>
+        <span><i style={{ background: "#4f46e5" }} /> fatura de cartão</span>
         <span><i style={{ background: "#7c3aed" }} /> lembrete</span>
         <span>demais cores são eventos</span>
       </div>

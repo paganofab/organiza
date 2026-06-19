@@ -28,6 +28,7 @@
 
 - **📊 Dashboard** — month overview: income, expenses, balance, what's due, overdue bills, spending-by-category chart, budget progress and reminders.
 - **💸 Bills & income** — full CRUD with categories, **recurring** entries, **installments** (e.g. 12×), paid/received status, receipt attachments, and an income/expense toggle.
+- **💳 Credit cards** — create cards with owner, closing/due days, purchases, installments, monthly statements, paid status, and simple percentage cashback.
 - **📅 Calendar** — monthly view mixing events, bill due dates and reminders.
 - **🔔 Reminders (to-do list)** — tasks with optional date/time, **recurrence** (daily/weekly/monthly), completion checkbox, and system notifications when due.
 - **👨‍👩‍👧‍👦 Family members** — create family members and assign bills, income and reminders to one person or the whole family, with filters across bills, reminders, reports and cash flow.
@@ -100,7 +101,7 @@ The installer is generated under `src-tauri/target/release/bundle/` (e.g. `.dmg`
 
 ```
 src/
-  pages/        # Dashboard, Contas, Calendário, Lembretes, Relatórios, Fluxo de caixa, Configurações
+  pages/        # Dashboard, Contas, Cartões, Calendário, Lembretes, Relatórios, Fluxo de caixa, Configurações
   components/   # Modal and entry forms
   lib/          # db, parser, telegram, reminders, consultas, backup, format, types
 src-tauri/

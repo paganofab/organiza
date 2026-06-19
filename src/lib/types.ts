@@ -18,6 +18,63 @@ export interface Membro {
   criado_em: string;
 }
 
+export interface CartaoCredito {
+  id: number;
+  nome: string;
+  emissor: string | null;
+  cor: string;
+  icone: string;
+  membro_id: number | null;
+  dia_fechamento: number;
+  dia_vencimento: number;
+  cashback_percentual_bps: number;
+  cashback_aplica_na_fatura: number;
+  ativo: number;
+  criado_em: string;
+}
+
+export interface LancamentoCartao {
+  id: number;
+  cartao_id: number;
+  descricao: string;
+  categoria_id: number | null;
+  membro_id: number | null;
+  valor_centavos: number;
+  data_compra: string;
+  observacoes: string | null;
+  parcela_num: number | null;
+  parcela_total: number | null;
+  serie_id: string | null;
+  cashback_elegivel: number;
+  criado_em: string;
+}
+
+export interface PagamentoFaturaCartao {
+  id: number;
+  cartao_id: number;
+  ano_mes: string;
+  status: StatusConta;
+  data_pagamento: string | null;
+  observacoes: string | null;
+}
+
+export interface FaturaCartao {
+  cartao_id: number;
+  cartao_nome: string;
+  cartao_cor: string;
+  cartao_membro_id: number | null;
+  ano_mes: string;
+  fechamento: string;
+  vencimento: string;
+  status: StatusConta;
+  data_pagamento: string | null;
+  valor_bruto_centavos: number;
+  cashback_centavos: number;
+  valor_liquido_centavos: number;
+  qtd_lancamentos: number;
+  cashback_aplica_na_fatura: number;
+}
+
 export interface Conta {
   id: number;
   descricao: string;
@@ -83,6 +140,31 @@ export interface NovaConta {
   meses_recorrencia: number;
   parcelado: boolean;
   parcela_total: number;
+}
+
+export interface NovoCartaoCredito {
+  nome: string;
+  emissor: string | null;
+  cor: string;
+  icone: string;
+  membro_id: number | null;
+  dia_fechamento: number;
+  dia_vencimento: number;
+  cashback_percentual_bps: number;
+  cashback_aplica_na_fatura: boolean;
+  ativo: boolean;
+}
+
+export interface NovoLancamentoCartao {
+  cartao_id: number;
+  descricao: string;
+  categoria_id: number | null;
+  membro_id: number | null;
+  valor_centavos: number;
+  data_compra: string;
+  observacoes: string | null;
+  parcela_total: number;
+  cashback_elegivel: boolean;
 }
 
 /** Conta atrasada = pendente com vencimento anterior a hoje. */
