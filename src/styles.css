@@ -95,11 +95,15 @@ body {
   font-weight: 700;
   color: #fff;
   padding: 0 12px 20px;
-  letter-spacing: 0.3px;
+  letter-spacing: 0;
 }
 
-.sidebar .logo span {
+.sidebar .logo-completo > span {
   color: #818cf8;
+}
+
+.sidebar .logo-compacto {
+  display: none;
 }
 
 .sidebar nav {
@@ -109,6 +113,7 @@ body {
 }
 
 .sidebar a {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -131,6 +136,7 @@ body {
 
 .sidebar .botao-tema {
   margin-top: auto;
+  width: 100%;
   background: rgba(255, 255, 255, 0.07);
   color: #c8cce0;
   font-size: 13px;
@@ -150,6 +156,7 @@ body {
 
 .conteudo {
   flex: 1;
+  min-width: 0;
   overflow-y: auto;
   padding: 28px 32px;
 }
@@ -195,7 +202,7 @@ body {
   font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
 }
 
 .card .valor {
@@ -337,6 +344,24 @@ button:hover { filter: brightness(1.08); }
   border-radius: 6px;
 }
 
+.btn-icone {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  padding: 0;
+  border-radius: 7px;
+  flex-shrink: 0;
+}
+
+.acao-perigo-sutil {
+  color: var(--red);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 input, select, textarea {
   font: inherit;
   color: var(--text);
@@ -430,7 +455,7 @@ th {
   color: var(--text-soft);
   font-size: 12px;
   text-transform: uppercase;
-  letter-spacing: 0.4px;
+  letter-spacing: 0;
   padding: 8px 10px;
   border-bottom: 1px solid var(--border);
 }
@@ -449,6 +474,84 @@ td.num, th.num {
   text-align: right;
 }
 
+.tabela-contas-wrapper {
+  padding: 0;
+}
+
+.tabela-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.tabela-contas .col-descricao {
+  min-width: 190px;
+}
+
+.tabela-contas .col-categoria {
+  min-width: 120px;
+}
+
+.tabela-contas .col-responsavel,
+.tabela-contas .col-vencimento,
+.tabela-contas .col-status,
+.tabela-contas .col-valor {
+  white-space: nowrap;
+}
+
+.tabela-contas .col-acoes {
+  width: 176px;
+}
+
+.conta-descricao {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.icone-recorrente {
+  display: inline-flex;
+  color: var(--text-soft);
+  flex-shrink: 0;
+}
+
+.conta-observacao,
+.status-data {
+  color: var(--text-soft);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.conta-meta-compacta {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: var(--text-soft);
+  font-size: 12px;
+  margin-top: 5px;
+}
+
+.status-conta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.data-curta {
+  display: none;
+}
+
+.acoes-conta {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.lista-contas-mobile {
+  display: none;
+}
+
 /* ---------- Filtros ---------- */
 
 .filtros {
@@ -461,6 +564,38 @@ td.num, th.num {
 
 .filtros select, .filtros input {
   width: auto;
+}
+
+.contas-filtros {
+  position: relative;
+}
+
+.busca-contas {
+  min-width: 200px;
+}
+
+.botao-filtros,
+.painel-filtros-topo {
+  display: none;
+}
+
+.painel-filtros {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.contador-filtros {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 99px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
 }
 
 .navegador-mes {
@@ -742,7 +877,7 @@ td.num, th.num {
   font-weight: 700;
   color: var(--text-soft);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
   margin: 16px 0 4px;
 }
 
@@ -906,4 +1041,280 @@ td.num, th.num {
   height: 100%;
   border-radius: 99px;
   transition: width 0.3s;
+}
+
+/* ---------- Responsividade ---------- */
+
+@media (max-width: 1180px) {
+  .sidebar {
+    width: 72px;
+    padding: 18px 10px;
+  }
+
+  .sidebar .logo {
+    padding: 0 0 20px;
+    text-align: center;
+  }
+
+  .sidebar .logo-completo,
+  .sidebar .nav-label,
+  .sidebar .tema-label {
+    display: none;
+  }
+
+  .sidebar .logo-compacto {
+    display: inline-flex;
+    width: 36px;
+    height: 36px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+  }
+
+  .sidebar a {
+    justify-content: center;
+    padding: 11px;
+  }
+
+  .sidebar .alerta-atrasadas {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    padding: 1px 5px;
+    font-size: 10px;
+  }
+
+  .sidebar .botao-tema {
+    width: 44px;
+    height: 40px;
+    align-self: center;
+    padding: 0;
+  }
+
+  .conteudo {
+    padding: 24px 20px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .botao-filtros {
+    display: inline-flex;
+  }
+
+  .botao-filtros.ativo {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .busca-contas {
+    flex: 1;
+    min-width: 180px;
+  }
+
+  .contas-filtros .busca-contas {
+    width: auto;
+  }
+
+  .painel-filtros {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 30;
+    width: min(360px, calc(100vw - 110px));
+    padding: 14px;
+    flex-direction: column;
+    align-items: stretch;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 14px 34px rgba(20, 23, 40, 0.22);
+  }
+
+  .painel-filtros.aberto {
+    display: flex;
+  }
+
+  .painel-filtros select {
+    width: 100%;
+  }
+
+  .painel-filtros-topo {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2px;
+  }
+
+  .tabela-contas .col-categoria,
+  .tabela-contas .col-responsavel {
+    display: none;
+  }
+
+  .conta-meta-compacta {
+    display: flex;
+  }
+
+  .tabela-contas .data-completa,
+  .status-conta .data-completa {
+    display: none;
+  }
+
+  .tabela-contas .data-curta,
+  .status-conta .data-curta {
+    display: inline;
+  }
+}
+
+@media (max-width: 900px) {
+  .cabecalho-contas {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .cabecalho-contas .navegador-mes {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: center;
+  }
+
+  .grade-dashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .fatura-cartao-topo {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .fatura-cartao-topo > button {
+    grid-column: 2;
+  }
+}
+
+@media (max-width: 760px) {
+  .sidebar {
+    width: 64px;
+    padding-inline: 8px;
+  }
+
+  .conteudo {
+    padding: 18px 14px;
+  }
+
+  .cabecalho-pagina {
+    margin-bottom: 16px;
+  }
+
+  .cards-resumo {
+    grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+    gap: 10px;
+  }
+
+  .card {
+    padding: 14px;
+  }
+
+  .tabela-contas-wrapper {
+    display: none;
+  }
+
+  .lista-contas-mobile {
+    display: block;
+    padding: 0;
+  }
+
+  .conta-mobile {
+    padding: 13px 14px;
+    border-top: 1px solid var(--border);
+  }
+
+  .conta-mobile:first-child {
+    border-top: none;
+  }
+
+  .conta-mobile-topo {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .conta-mobile-topo .info {
+    min-width: 0;
+  }
+
+  .conta-mobile-valor {
+    white-space: nowrap;
+  }
+
+  .conta-mobile-meta {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+    color: var(--text-soft);
+    font-size: 12px;
+  }
+
+  .conta-mobile-rodape {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 10px;
+  }
+
+  .conta-mobile .status-conta .data-completa {
+    display: inline;
+  }
+
+  .conta-mobile .status-conta .data-curta {
+    display: none;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-grid .largura-total {
+    grid-column: auto;
+  }
+
+  .modal {
+    width: min(560px, calc(100vw - 24px));
+    padding: 18px;
+  }
+}
+
+@media (max-width: 520px) {
+  .cabecalho-contas {
+    grid-template-columns: 1fr;
+  }
+
+  .cabecalho-contas > .btn-primario {
+    grid-row: 2;
+    justify-self: start;
+  }
+
+  .cabecalho-contas .navegador-mes {
+    grid-row: 3;
+  }
+
+  .contas-filtros {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .conta-mobile-rodape {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .conta-mobile-rodape .acoes-conta {
+    align-self: flex-end;
+  }
 }

@@ -1,7 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { ChevronLeft, ChevronRight, Plus, Repeat } from "lucide-react";
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  Paperclip,
+  Pencil,
+  Plus,
+  Repeat,
+  RotateCcw,
+  SlidersHorizontal,
+  Trash2,
+  X,
+} from "lucide-react";
 import ContaForm from "../components/ContaForm";
 import { MembroBadge } from "../components/MembroBadge";
 import { IconeCategoria } from "../lib/icons";
@@ -37,6 +50,7 @@ export default function Contas() {
   const [filtroMembro, setFiltroMembro] = useState("");
   const [filtroTipo, setFiltroTipo] = useState("");
   const [busca, setBusca] = useState("");
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   const [formAberto, setFormAberto] = useState(false);
   const [editando, setEditando] = useState<Conta | null>(null);
 
@@ -101,6 +115,24 @@ export default function Contas() {
     (t, c) => t + (c.tipo === "receita" ? c.valor_centavos : -c.valor_centavos),
     0,
   );
+  const quantidadeFiltrosAtivos = [
+    filtroTipo,
+    filtroStatus,
+    filtroCategoria,
+    filtroMembro,
+  ].filter(Boolean).length;
+
+  function limparFiltros() {
+    setFiltroTipo("");
+    setFiltroStatus("");
+    setFiltroCategoria("");
+    setFiltroMembro("");
+  }
+
+  function formatarDataCurta(iso: string) {
+    const [, mes, dia] = iso.split("-");
+    return `${dia}/${mes}`;
+  }
 
   function mudarMes(delta: number) {
     setAnoMes(somarMeses(`${anoMes}-01`, delta).slice(0, 7));
@@ -163,9 +195,106 @@ export default function Contas() {
     await carregar();
   }
 
+  function statusConta(c: Conta) {
+    const receita = c.tipo === "receita";
+    const atrasada = !receita && estaAtrasada(c, hoje);
+    const rotulo = atrasada
+      ? "Atrasada"
+      : c.status === "paga"
+        ? receita
+          ? "Recebida"
+          : "Paga"
+        : receita
+          ? "A receber"
+          : "Pendente";
+    return (
+      <div className="status-conta">
+        <span className={`badge ${atrasada ? "atrasada" : c.status}`}>
+          {rotulo}
+        </span>
+        {c.status === "paga" && c.data_pagamento && (
+          <span className="status-data">
+            em <span className="data-completa">{formatarData(c.data_pagamento)}</span>
+            <span className="data-curta">{formatarDataCurta(c.data_pagamento)}</span>
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  function acoesConta(c: Conta) {
+    const receita = c.tipo === "receita";
+    const rotuloPagamento =
+      c.status === "paga"
+        ? "Reabrir lançamento"
+        : receita
+          ? "Marcar como recebida"
+          : "Marcar como paga";
+    return (
+      <div className="acoes-conta">
+        <button
+          className={`btn-icone ${c.status === "paga" ? "btn-secundario" : "btn-primario"}`}
+          onClick={() => alternarPagamento(c)}
+          title={rotuloPagamento}
+          aria-label={rotuloPagamento}
+        >
+          {c.status === "paga" ? <RotateCcw size={15} /> : <Check size={16} />}
+        </button>
+        {c.comprovante ? (
+          <>
+            <button
+              className="btn-icone btn-secundario"
+              onClick={() => abrirComprovante(c)}
+              title="Abrir comprovante"
+              aria-label="Abrir comprovante"
+            >
+              <Eye size={15} />
+            </button>
+            <button
+              className="btn-icone btn-secundario acao-perigo-sutil"
+              onClick={() => removerComprovante(c)}
+              title="Remover comprovante"
+              aria-label="Remover comprovante"
+            >
+              <X size={15} />
+            </button>
+          </>
+        ) : (
+          <button
+            className="btn-icone btn-secundario"
+            onClick={() => anexarComprovante(c)}
+            title="Anexar comprovante"
+            aria-label="Anexar comprovante"
+          >
+            <Paperclip size={15} />
+          </button>
+        )}
+        <button
+          className="btn-icone btn-secundario"
+          onClick={() => {
+            setEditando(c);
+            setFormAberto(true);
+          }}
+          title="Editar lançamento"
+          aria-label="Editar lançamento"
+        >
+          <Pencil size={15} />
+        </button>
+        <button
+          className="btn-icone btn-perigo"
+          onClick={() => excluir(c)}
+          title="Excluir lançamento"
+          aria-label="Excluir lançamento"
+        >
+          <Trash2 size={15} />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div>
-      <div className="cabecalho-pagina">
+      <div className="cabecalho-pagina cabecalho-contas">
         <div>
           <h1>Contas</h1>
           <div className="subtitulo">
@@ -173,11 +302,21 @@ export default function Contas() {
           </div>
         </div>
         <div className="navegador-mes">
-          <button className="btn-secundario btn-mini" onClick={() => mudarMes(-1)}>
+          <button
+            className="btn-secundario btn-icone"
+            onClick={() => mudarMes(-1)}
+            title="Mês anterior"
+            aria-label="Mês anterior"
+          >
             <ChevronLeft size={15} />
           </button>
           <span className="mes-atual">{nomeMesAno(anoMes)}</span>
-          <button className="btn-secundario btn-mini" onClick={() => mudarMes(1)}>
+          <button
+            className="btn-secundario btn-icone"
+            onClick={() => mudarMes(1)}
+            title="Próximo mês"
+            aria-label="Próximo mês"
+          >
             <ChevronRight size={15} />
           </button>
         </div>
@@ -192,192 +331,264 @@ export default function Contas() {
         </button>
       </div>
 
-      <div className="filtros">
+      <div className="filtros contas-filtros">
         <input
+          className="busca-contas"
           placeholder="Buscar descrição…"
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
-          style={{ minWidth: 200 }}
         />
-        <select value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)}>
-          <option value="">Despesas e receitas</option>
-          <option value="despesa">Só despesas</option>
-          <option value="receita">Só receitas</option>
-        </select>
-        <select
-          value={filtroStatus}
-          onChange={(e) => setFiltroStatus(e.target.value)}
+        <button
+          className={`btn-secundario botao-filtros ${filtrosAbertos ? "ativo" : ""}`}
+          onClick={() => setFiltrosAbertos((aberto) => !aberto)}
+          aria-expanded={filtrosAbertos}
+          aria-controls="painel-filtros-contas"
         >
-          <option value="">Todos os status</option>
-          <option value="pendente">Pendentes</option>
-          <option value="atrasada">Atrasadas</option>
-          <option value="paga">Pagas</option>
-        </select>
-        <select
-          value={filtroCategoria}
-          onChange={(e) => setFiltroCategoria(e.target.value)}
+          <SlidersHorizontal size={15} /> Filtros
+          {quantidadeFiltrosAtivos > 0 && (
+            <span className="contador-filtros">{quantidadeFiltrosAtivos}</span>
+          )}
+        </button>
+        <div
+          id="painel-filtros-contas"
+          className={`painel-filtros ${filtrosAbertos ? "aberto" : ""}`}
         >
-          <option value="">Todas as categorias</option>
-          <optgroup label="Despesas">
-            {categorias
-              .filter((c) => c.tipo === "despesa")
-              .map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nome}
-                </option>
-              ))}
-          </optgroup>
-          <optgroup label="Receitas">
-            {categorias
-              .filter((c) => c.tipo === "receita")
-              .map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nome}
-                </option>
+          <div className="painel-filtros-topo">
+            <strong>Filtrar lançamentos</strong>
+            {quantidadeFiltrosAtivos > 0 && (
+              <button className="link-acao" onClick={limparFiltros}>
+                Limpar
+              </button>
+            )}
+          </div>
+          <select
+            value={filtroTipo}
+            onChange={(e) => setFiltroTipo(e.target.value)}
+          >
+            <option value="">Despesas e receitas</option>
+            <option value="despesa">Só despesas</option>
+            <option value="receita">Só receitas</option>
+          </select>
+          <select
+            value={filtroStatus}
+            onChange={(e) => setFiltroStatus(e.target.value)}
+          >
+            <option value="">Todos os status</option>
+            <option value="pendente">Pendentes</option>
+            <option value="atrasada">Atrasadas</option>
+            <option value="paga">Pagas</option>
+          </select>
+          <select
+            value={filtroCategoria}
+            onChange={(e) => setFiltroCategoria(e.target.value)}
+          >
+            <option value="">Todas as categorias</option>
+            <optgroup label="Despesas">
+              {categorias
+                .filter((c) => c.tipo === "despesa")
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nome}
+                  </option>
+                ))}
+            </optgroup>
+            <optgroup label="Receitas">
+              {categorias
+                .filter((c) => c.tipo === "receita")
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nome}
+                  </option>
+                ))}
+            </optgroup>
+          </select>
+          <select
+            value={filtroMembro}
+            onChange={(e) => setFiltroMembro(e.target.value)}
+          >
+            <option value="">Todos os responsáveis</option>
+            <option value="familia">Família inteira</option>
+            {membros.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.nome}
+                {m.ativo !== 1 ? " (arquivado)" : ""}
+              </option>
             ))}
-          </optgroup>
-        </select>
-        <select value={filtroMembro} onChange={(e) => setFiltroMembro(e.target.value)}>
-          <option value="">Todos os responsáveis</option>
-          <option value="familia">Família inteira</option>
-          {membros.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.nome}
-              {m.ativo !== 1 ? " (arquivado)" : ""}
-            </option>
-          ))}
-        </select>
+          </select>
+        </div>
       </div>
 
-      <div className="card" style={{ padding: 0 }}>
-        <table>
-          <thead>
-            <tr>
-              <th>Descrição</th>
-              <th>Categoria</th>
-              <th>Responsável</th>
-              <th>Vencimento</th>
-              <th>Status</th>
-              <th className="num">Valor</th>
-              <th>Comprovante</th>
-              <th style={{ width: 220 }}>Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visiveis.length === 0 && (
+      <div className="card tabela-contas-wrapper">
+        <div className="tabela-scroll">
+          <table className="tabela-contas">
+            <thead>
               <tr>
-                <td colSpan={8}>
-                  <div className="vazio">Nenhuma conta encontrada neste mês.</div>
-                </td>
+                <th className="col-descricao">Descrição</th>
+                <th className="col-categoria">Categoria</th>
+                <th className="col-responsavel">Responsável</th>
+                <th className="col-vencimento">Vencimento</th>
+                <th className="col-status">Status</th>
+                <th className="num col-valor">Valor</th>
+                <th className="col-acoes">Ações</th>
               </tr>
-            )}
-            {visiveis.map((c) => {
-              const cat = c.categoria_id ? catPorId.get(c.categoria_id) : undefined;
-              const membro = c.membro_id ? membroPorId.get(c.membro_id) : null;
-              const receita = c.tipo === "receita";
-              const atrasada = !receita && estaAtrasada(c, hoje);
-              return (
-                <tr key={c.id}>
-                  <td>
-                    <strong>{c.descricao}</strong>
-                    {c.recorrente === 1 && (
-                      <span title="Conta recorrente" style={{ marginLeft: 6, verticalAlign: "middle", color: "var(--text-soft)" }}>
-                        <Repeat size={13} />
-                      </span>
-                    )}
-                    {c.observacoes && (
-                      <div style={{ color: "var(--text-soft)", fontSize: 12 }}>
-                        {c.observacoes}
-                      </div>
-                    )}
-                  </td>
-                  <td>
-                    {cat ? (
-                      <span className="celula-categoria">
-                        <IconeCategoria nome={cat.icone} cor={cat.cor} size={15} />
-                        {cat.nome}
-                      </span>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td>
-                    <MembroBadge membro={membro} mostrarFamilia />
-                  </td>
-                  <td>{formatarData(c.vencimento)}</td>
-                  <td>
-                    <span
-                      className={`badge ${atrasada ? "atrasada" : c.status}`}
-                    >
-                      {atrasada
-                        ? "Atrasada"
-                        : c.status === "paga"
-                          ? `${receita ? "Recebida" : "Paga"}${c.data_pagamento ? ` em ${formatarData(c.data_pagamento)}` : ""}`
-                          : receita
-                            ? "A receber"
-                            : "Pendente"}
-                    </span>
-                  </td>
-                  <td className="num">
-                    <strong style={receita ? { color: "var(--green)" } : undefined}>
-                      {receita ? "+" : ""}
-                      {formatarMoeda(c.valor_centavos)}
-                    </strong>
-                  </td>
-                  <td>
-                    {c.comprovante ? (
-                      <span style={{ display: "flex", gap: 8 }}>
-                        <button className="link-acao" onClick={() => abrirComprovante(c)}>
-                          Ver
-                        </button>
-                        <button
-                          className="link-acao"
-                          style={{ color: "var(--red)" }}
-                          onClick={() => removerComprovante(c)}
-                        >
-                          Remover
-                        </button>
-                      </span>
-                    ) : (
-                      <button className="link-acao" onClick={() => anexarComprovante(c)}>
-                        Anexar
-                      </button>
-                    )}
-                  </td>
-                  <td>
-                    <span style={{ display: "flex", gap: 6 }}>
-                      <button
-                        className={`btn-mini ${c.status === "paga" ? "btn-secundario" : "btn-primario"}`}
-                        onClick={() => alternarPagamento(c)}
-                      >
-                        {c.status === "paga"
-                          ? "Reabrir"
-                          : receita
-                            ? "Receber"
-                            : "Pagar"}
-                      </button>
-                      <button
-                        className="btn-mini btn-secundario"
-                        onClick={() => {
-                          setEditando(c);
-                          setFormAberto(true);
-                        }}
-                      >
-                        Editar
-                      </button>
-                      <button
-                        className="btn-mini btn-perigo"
-                        onClick={() => excluir(c)}
-                      >
-                        Excluir
-                      </button>
-                    </span>
+            </thead>
+            <tbody>
+              {visiveis.length === 0 && (
+                <tr>
+                  <td colSpan={7}>
+                    <div className="vazio">
+                      Nenhuma conta encontrada neste mês.
+                    </div>
                   </td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              )}
+              {visiveis.map((c) => {
+                const cat = c.categoria_id
+                  ? catPorId.get(c.categoria_id)
+                  : undefined;
+                const membro = c.membro_id
+                  ? membroPorId.get(c.membro_id)
+                  : null;
+                const receita = c.tipo === "receita";
+                return (
+                  <tr key={c.id}>
+                    <td className="col-descricao">
+                      <div className="conta-descricao">
+                        <strong>{c.descricao}</strong>
+                        {c.recorrente === 1 && (
+                          <span
+                            className="icone-recorrente"
+                            title="Conta recorrente"
+                          >
+                            <Repeat size={13} />
+                          </span>
+                        )}
+                      </div>
+                      {c.observacoes && (
+                        <div className="conta-observacao">{c.observacoes}</div>
+                      )}
+                      <div className="conta-meta-compacta">
+                        {cat ? (
+                          <span className="celula-categoria">
+                            <IconeCategoria
+                              nome={cat.icone}
+                              cor={cat.cor}
+                              size={14}
+                            />
+                            {cat.nome}
+                          </span>
+                        ) : (
+                          <span>Sem categoria</span>
+                        )}
+                        <MembroBadge membro={membro} mostrarFamilia />
+                      </div>
+                    </td>
+                    <td className="col-categoria">
+                      {cat ? (
+                        <span className="celula-categoria">
+                          <IconeCategoria
+                            nome={cat.icone}
+                            cor={cat.cor}
+                            size={15}
+                          />
+                          {cat.nome}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="col-responsavel">
+                      <MembroBadge membro={membro} mostrarFamilia />
+                    </td>
+                    <td className="col-vencimento">
+                      <span className="data-completa">
+                        {formatarData(c.vencimento)}
+                      </span>
+                      <span className="data-curta">
+                        {formatarDataCurta(c.vencimento)}
+                      </span>
+                    </td>
+                    <td className="col-status">{statusConta(c)}</td>
+                    <td className="num col-valor">
+                      <strong
+                        style={receita ? { color: "var(--green)" } : undefined}
+                      >
+                        {receita ? "+" : ""}
+                        {formatarMoeda(c.valor_centavos)}
+                      </strong>
+                    </td>
+                    <td className="col-acoes">{acoesConta(c)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="card lista-contas-mobile">
+        {visiveis.length === 0 ? (
+          <div className="vazio">Nenhuma conta encontrada neste mês.</div>
+        ) : (
+          visiveis.map((c) => {
+            const cat = c.categoria_id
+              ? catPorId.get(c.categoria_id)
+              : undefined;
+            const membro = c.membro_id
+              ? membroPorId.get(c.membro_id)
+              : null;
+            const receita = c.tipo === "receita";
+            return (
+              <div className="conta-mobile" key={c.id}>
+                <div className="conta-mobile-topo">
+                  <div className="info">
+                    <div className="conta-descricao">
+                      <strong>{c.descricao}</strong>
+                      {c.recorrente === 1 && (
+                        <span
+                          className="icone-recorrente"
+                          title="Conta recorrente"
+                        >
+                          <Repeat size={13} />
+                        </span>
+                      )}
+                    </div>
+                    {c.observacoes && (
+                      <div className="conta-observacao">{c.observacoes}</div>
+                    )}
+                  </div>
+                  <strong
+                    className="conta-mobile-valor"
+                    style={receita ? { color: "var(--green)" } : undefined}
+                  >
+                    {receita ? "+" : ""}
+                    {formatarMoeda(c.valor_centavos)}
+                  </strong>
+                </div>
+                <div className="conta-mobile-meta">
+                  {cat ? (
+                    <span className="celula-categoria">
+                      <IconeCategoria
+                        nome={cat.icone}
+                        cor={cat.cor}
+                        size={14}
+                      />
+                      {cat.nome}
+                    </span>
+                  ) : (
+                    <span>Sem categoria</span>
+                  )}
+                  <MembroBadge membro={membro} mostrarFamilia />
+                  <span>{formatarData(c.vencimento)}</span>
+                </div>
+                <div className="conta-mobile-rodape">
+                  {statusConta(c)}
+                  {acoesConta(c)}
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
 
       <ContaForm

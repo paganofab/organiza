@@ -114,7 +114,10 @@ export default function App() {
     <div className="layout">
       <aside className="sidebar">
         <div className="logo">
-          Orga<span>niza</span>
+          <span className="logo-completo">
+            Orga<span>niza</span>
+          </span>
+          <span className="logo-compacto">O</span>
         </div>
         <nav>
           {LINKS.map((l) => (
@@ -123,18 +126,25 @@ export default function App() {
               to={l.para}
               end={l.para === "/"}
               className={({ isActive }) => (isActive ? "ativo" : "")}
+              title={l.rotulo}
             >
               <l.Icone size={18} strokeWidth={2} />
-              {l.rotulo}
+              <span className="nav-label">{l.rotulo}</span>
               {l.para === "/contas" && atrasadas > 0 && (
                 <span className="alerta-atrasadas">{atrasadas}</span>
               )}
             </NavLink>
           ))}
         </nav>
-        <button className="botao-tema" onClick={alternarTema}>
+        <button
+          className="botao-tema"
+          onClick={alternarTema}
+          title={tema === "claro" ? "Ativar modo escuro" : "Ativar modo claro"}
+        >
           {tema === "claro" ? <Moon size={16} /> : <Sun size={16} />}
-          {tema === "claro" ? "Modo escuro" : "Modo claro"}
+          <span className="tema-label">
+            {tema === "claro" ? "Modo escuro" : "Modo claro"}
+          </span>
         </button>
       </aside>
       <main className="conteudo">
