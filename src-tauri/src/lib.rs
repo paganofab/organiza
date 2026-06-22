@@ -108,9 +108,10 @@ fn set_keep_awake(enabled: bool) -> Result<bool, String> {
         }
     }
 
-    if let Some(id) = atual.take() {
+    if let Some(id) = *atual {
         #[cfg(target_os = "macos")]
         liberar_assertion_power(id)?;
+        *atual = None;
     }
     Ok(false)
 }
@@ -608,13 +609,20 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while running tauri application");
 
-    app.run(|app_handle, evento| {
+    app.run(|app_handle, evento| match evento {
         // Clique no ícone do Dock reabre a janela escondida (macOS)
-        if let tauri::RunEvent::Reopen { .. } = evento {
+        #[cfg(target_os = "macos")]
+        tauri::RunEvent::Reopen { .. } => {
             if let Some(janela) = app_handle.get_webview_window("main") {
                 let _ = janela.show();
                 let _ = janela.set_focus();
             }
         }
+        tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit => {
+            if let Err(erro) = set_keep_awake(false) {
+                eprintln!("Falha ao liberar assertion de energia ao encerrar: {erro}");
+            }
+        }
+        _ => {}
     });
 }
